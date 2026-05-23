@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/auth_service.dart';
 import '../../theme.dart';
-import '../lecturer/ambil_kehadiran_screen.dart';
-import '../lecturer/lapor_disiplin_screen.dart';
-import '../lecturer/my_timetable_screen.dart';
 import '../booking/create_booking_screen.dart';
-import '../booking/my_bookings_screen.dart';
 import '../../utils/dialogs.dart';
 
+/// Pensyarah (Lecturer) Dashboard — the "shell" for teammates.
+///
+/// Module 1-5 cards show a placeholder SnackBar message.
+/// Module 6 "Tempah Bilik" navigates to the full CreateBookingScreen.
 class PensyarahDashboardScreen extends ConsumerWidget {
   const PensyarahDashboardScreen({super.key});
 
@@ -86,72 +86,70 @@ class PensyarahDashboardScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              // 2x2 Grid
+              // 2×3 Grid — 5 placeholders + 1 real module
               Expanded(
                 child: GridView.count(
                   crossAxisCount: 2,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 0.9,
+                  childAspectRatio: 0.95,
                   children: [
-                    _MenuCard(
-                      title: 'Ambil Kehadiran',
-                      icon: Icons.fact_check_rounded,
-                      color: EHadirTheme.approved,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const AmbilKehadiranScreen()),
-                      ),
-                    ),
-                    _MenuCard(
-                      title: 'Lapor Disiplin',
-                      icon: Icons.gavel_rounded,
-                      color: EHadirTheme.rejected,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const LaporDisiplinScreen()),
-                      ),
-                    ),
+                    // ── Module 5: My Timetable (Placeholder) ──
                     _MenuCard(
                       title: 'Jadual Saya',
+                      subtitle: 'Module 5',
                       icon: Icons.calendar_month_rounded,
                       color: EHadirTheme.primary,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => MyTimetableScreen(
-                                onTakeAttendance: (slotId) {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => AmbilKehadiranScreen(
-                                          initialSlotId: slotId),
-                                    ),
-                                  );
-                                })),
-                      ),
+                      onTap: () => _showPlaceholder(context, 5),
                     ),
+
+                    // ── Module 1: Ambil Kehadiran (Placeholder) ──
+                    _MenuCard(
+                      title: 'Ambil Kehadiran',
+                      subtitle: 'Module 1',
+                      icon: Icons.fact_check_rounded,
+                      color: EHadirTheme.approved,
+                      onTap: () => _showPlaceholder(context, 1),
+                    ),
+
+                    // ── Module 2: Lapor Disiplin (Placeholder) ──
+                    _MenuCard(
+                      title: 'Lapor Disiplin',
+                      subtitle: 'Module 2',
+                      icon: Icons.gavel_rounded,
+                      color: EHadirTheme.rejected,
+                      onTap: () => _showPlaceholder(context, 2),
+                    ),
+
+                    // ── Module 3: Pengurusan Pelajar (Placeholder) ──
+                    _MenuCard(
+                      title: 'Pengurusan Pelajar',
+                      subtitle: 'Module 3',
+                      icon: Icons.people_alt_rounded,
+                      color: EHadirTheme.pending,
+                      onTap: () => _showPlaceholder(context, 3),
+                    ),
+
+                    // ── Module 4: Upload Schedule (Placeholder) ──
+                    _MenuCard(
+                      title: 'Muat Naik Jadual',
+                      subtitle: 'Module 4',
+                      icon: Icons.upload_file_rounded,
+                      color: const Color(0xFF7C4DFF),
+                      onTap: () => _showPlaceholder(context, 4),
+                    ),
+
+                    // ═══ MODULE 6: BOOK REPLACEMENT ROOM (ACTIVE) ═══
                     _MenuCard(
                       title: 'Tempah Bilik',
+                      subtitle: 'Module 6',
                       icon: Icons.add_location_alt_rounded,
                       color: EHadirTheme.accent,
+                      isHighlighted: true,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
                             builder: (_) => const CreateBookingScreen()),
-                      ),
-                    ),
-                    _MenuCard(
-                      title: 'Tempahan Saya',
-                      icon: Icons.bookmark_rounded,
-                      color: const Color(0xFF7C4DFF),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => MyBookingsScreen(
-                                currentLecturerId: current.id)),
                       ),
                     ),
                   ],
@@ -163,25 +161,45 @@ class PensyarahDashboardScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _showPlaceholder(BuildContext context, int moduleNumber) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Module $moduleNumber is pending implementation by teammate.',
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: EHadirTheme.pending,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
 }
 
 class _MenuCard extends StatelessWidget {
   final String title;
+  final String subtitle;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
+  final bool isHighlighted;
 
   const _MenuCard({
     required this.title,
+    required this.subtitle,
     required this.icon,
     required this.color,
     required this.onTap,
+    this.isHighlighted = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: EHadirTheme.card,
+      color: isHighlighted
+          ? EHadirTheme.accent.withValues(alpha: 0.08)
+          : EHadirTheme.card,
       borderRadius: BorderRadius.circular(EHadirTheme.radiusLg),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -190,7 +208,10 @@ class _MenuCard extends StatelessWidget {
         highlightColor: color.withValues(alpha: 0.05),
         child: Container(
           decoration: BoxDecoration(
-            border: Border.all(color: EHadirTheme.divider),
+            border: Border.all(
+              color: isHighlighted ? EHadirTheme.accent : EHadirTheme.divider,
+              width: isHighlighted ? 2 : 1,
+            ),
             borderRadius: BorderRadius.circular(EHadirTheme.radiusLg),
           ),
           padding: const EdgeInsets.all(16),
@@ -205,14 +226,23 @@ class _MenuCard extends StatelessWidget {
                 ),
                 child: Icon(icon, color: color, size: 36),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Text(
                 title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: EHadirTheme.textPrimary,
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: color.withValues(alpha: 0.7),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],

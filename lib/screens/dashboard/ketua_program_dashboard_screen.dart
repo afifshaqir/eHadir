@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/auth_service.dart';
 import '../../services/mock_db_service.dart';
+import '../../services/booking_service.dart';
 import '../../models/user.dart';
 import '../../models/class_slot_model.dart';
 import '../../theme.dart';
@@ -90,8 +91,33 @@ class _KetuaProgramDashboardScreenState
     setState(() => _isSubmitting = true);
 
     final db = ref.read(mockDbProvider);
+    final bookingService = ref.read(firestoreBookingProvider);
     final auth = ref.read(authProvider);
     final current = auth.currentUser!;
+
+    final startMin = _startTime.hour * 60 + _startTime.minute;
+    final endMin = _endTime.hour * 60 + _endTime.minute;
+
+    // Check for conflicts
+    final hasConflict = await bookingService.checkConflict(
+      _selectedRoom!,
+      _selectedDate!,
+      startMin,
+      endMin,
+    );
+
+    if (hasConflict) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Bilik $_selectedRoom telah digunakan pada masa ini.'),
+            backgroundColor: EHadirTheme.rejected,
+          ),
+        );
+      }
+      return;
+    }
 
     final slot = ClassSlotModel(
       id: _uuid.v4(),

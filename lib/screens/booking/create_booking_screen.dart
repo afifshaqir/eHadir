@@ -1,41 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../services/mock_db_service.dart';
 import '../../services/booking_service.dart';
-import '../../models/booking.dart';
-import '../../models/room.dart';
-import '../../models/conflict_result.dart';
-import '../../theme.dart';
 import '../../services/auth_service.dart';
+import '../../models/booking.dart';
+import '../../theme.dart';
 
+/// Module 6: 4-Step Booking Wizard
+///
+/// Step 1: Maklumat Kelas & Pensyarah
+/// Step 2: Pilih Tarikh & Masa
+/// Step 3: Pilih Bilik
+/// Step 4: Pengesahan & Hantar
 class CreateBookingScreen extends ConsumerStatefulWidget {
   const CreateBookingScreen({super.key});
 
   @override
-  ConsumerState<CreateBookingScreen> createState() => _CreateBookingScreenState();
+  ConsumerState<CreateBookingScreen> createState() =>
+      _CreateBookingScreenState();
 }
 
 class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
     with SingleTickerProviderStateMixin {
-  // ─── Form state ───────────────────────────────────────────
+  // ─── Step tracking ──────────────────────────────────────
   int _currentStep = 0;
+
+  // ─── Step 1 state ───────────────────────────────────────
+  final _subjectCtrl = TextEditingController();
+  String? _selectedLecturerId;
+  String? _selectedLecturerName;
+  List<_LecturerOption> _lecturers = [];
+  bool _loadingLecturers = true;
+
+  // ─── Step 2 state ───────────────────────────────────────
   DateTime? _selectedDate;
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 11, minute: 0);
+
+  // ─── Step 3 state ───────────────────────────────────────
   String? _selectedRoom;
-  String? _selectedSubject;
-  String? _selectedCohort;
-  String _remarks = '';
-  BookingType _bookingType = BookingType.replacement;
+  static const List<String> _rooms = [
+    'Bengkel Kimpalan',
+    'Bilik Kuliah A1',
+    'Bilik Kuliah A2',
+    'Makmal Elektrik 1',
+    'Makmal Mekanika 1',
+  ];
 
-  // ─── Conflict state ───────────────────────────────────────
-  ConflictResult? _conflictResult;
+  // ─── Step 4 state ───────────────────────────────────────
   bool _isSubmitting = false;
-  bool _submitted = false;
-  String _successMessage = '';
 
-  // ─── Animation ────────────────────────────────────────────
+  // ─── Animation ──────────────────────────────────────────
   late AnimationController _animController;
   late Animation<double> _fadeIn;
 
@@ -48,120 +63,145 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
     );
     _fadeIn = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _animController.forward();
+    _loadLecturers();
+  }
+
+  Future<void> _loadLecturers() async {
+    try {
+      final auth = ref.read(authProvider);
+      final allUsers = await auth.fetchAllUsers();
+      if (mounted) {
+        setState(() {
+          _lecturers = allUsers
+              .where((u) => u.role.name == 'pensyarah')
+              .map((u) => _LecturerOption(id: u.id, name: u.name))
+              .toList();
+          _loadingLecturers = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loadingLecturers = false);
+      }
+    }
   }
 
   @override
   void dispose() {
+    _subjectCtrl.dispose();
     _animController.dispose();
     super.dispose();
   }
 
-  bool get _isStep1Valid => _selectedDate != null;
-  bool get _isStep2Valid => _selectedRoom != null;
-  bool get _isStep3Valid => _selectedSubject != null && _selectedCohort != null;
+  // ─── Validation ─────────────────────────────────────────
+  bool get _isStep1Valid =>
+      _subjectCtrl.text.trim().isNotEmpty && _selectedLecturerId != null;
+  bool get _isStep2Valid => _selectedDate != null;
+  bool get _isStep3Valid => _selectedRoom != null;
 
-  void _runConflictCheck() {
-    if (!_isStep1Valid || !_isStep2Valid || !_isStep3Valid) return;
+  int _timeToMinutes(TimeOfDay t) => t.hour * 60 + t.minute;
 
-    final bookingService = ref.read(bookingProvider);
-    final proposed = _buildBooking();
-    setState(() {
-      _conflictResult = bookingService.checkAllConflicts(proposed);
-    });
-  }
+  String _formatTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-  Booking _buildBooking() {
-    final authState = ref.read(authProvider);
-    return Booking(
-      id: '',
-      lecturerId: authState.currentUser?.id ?? '',
-      type: _bookingType,
-      subject: _selectedSubject!,
-      cohort: _selectedCohort!,
-      room: _selectedRoom!,
-      date: _selectedDate!,
-      startTime: _startTime,
-      endTime: _endTime,
-      status: BookingStatus.pending,
-      createdAt: DateTime.now(),
-      remarks: _remarks.isNotEmpty ? _remarks : null,
-    );
-  }
+  // ═══════════════════════════════════════════════════════════
+  //  SUBMIT LOGIC
+  // ═══════════════════════════════════════════════════════════
 
-  Future<void> _submitBooking({bool forceSubmit = false}) async {
+  Future<void> _handleSubmit() async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
 
-    final bookingService = ref.read(bookingProvider);
+    final bookingService = ref.read(firestoreBookingProvider);
+
+    final booking = FirestoreBooking(
+      id: '', // Firestore will auto-generate
+      subjectName: _subjectCtrl.text.trim(),
+      lecturerId: _selectedLecturerId!,
+      lecturerName: _selectedLecturerName!,
+      roomId: _selectedRoom!,
+      date: _selectedDate!,
+      startTime: _timeToMinutes(_startTime),
+      endTime: _timeToMinutes(_endTime),
+    );
+
     try {
-      final saved = await bookingService.submitBooking(
-        _buildBooking(),
-        forceSubmit: forceSubmit,
-      );
-      setState(() {
-        _submitted = true;
-        _isSubmitting = false;
-        _successMessage = saved.status == BookingStatus.approved
-            ? 'Booking auto-approved! No conflicts detected. ✅'
-            : 'Booking submitted for admin review. ⏳';
-      });
-    } on BookingConflictException catch (e) {
-      setState(() {
-        _conflictResult = e.conflicts;
-        _isSubmitting = false;
-      });
+      await bookingService.saveBooking(booking);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.message),
+            content: const Text(
+              'Tempahan berjaya disimpan! ✅',
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: EHadirTheme.approved,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } on BookingConflictException catch (e) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '❌ Konflik: ${e.message}',
+              style: const TextStyle(color: Colors.white),
+            ),
             backgroundColor: EHadirTheme.rejected,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
     } catch (e) {
-      setState(() => _isSubmitting = false);
       if (mounted) {
+        setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: EHadirTheme.rejected),
+          SnackBar(
+            content: Text('Ralat: $e'),
+            backgroundColor: EHadirTheme.rejected,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
   }
 
-  void _resetForm() {
-    setState(() {
-      _currentStep = 0;
-      _selectedDate = null;
-      _startTime = const TimeOfDay(hour: 9, minute: 0);
-      _endTime = const TimeOfDay(hour: 11, minute: 0);
-      _selectedRoom = null;
-      _selectedSubject = null;
-      _selectedCohort = null;
-      _remarks = '';
-      _conflictResult = null;
-      _submitted = false;
-      _successMessage = '';
-    });
-  }
+  // ═══════════════════════════════════════════════════════════
+  //  BUILD
+  // ═══════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
-    if (_submitted) return _buildSuccessView();
-
-    return FadeTransition(
-      opacity: _fadeIn,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
-        children: [
-          _buildPageHeader(),
-          const SizedBox(height: 20),
-          _buildProgressIndicator(),
-          const SizedBox(height: 24),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: _buildCurrentStep(),
-          ),
-        ],
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Tempah Bilik Ganti'),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(gradient: EHadirTheme.primaryGradient),
+        ),
+      ),
+      body: FadeTransition(
+        opacity: _fadeIn,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+          children: [
+            _buildPageHeader(),
+            const SizedBox(height: 24),
+            _buildProgressIndicator(),
+            const SizedBox(height: 24),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _buildCurrentStep(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -182,17 +222,21 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
               color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
             ),
-            child: const Icon(Icons.add_business_rounded, color: Colors.white, size: 24),
+            child: const Icon(Icons.add_business_rounded,
+                color: Colors.white, size: 28),
           ),
           const SizedBox(width: 16),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('New Booking Request',
-                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+                Text('Tempahan Bilik Ganti',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700)),
                 SizedBox(height: 2),
-                Text('Request a replacement or rescheduled class',
+                Text('Mohon bilik untuk kelas gantian',
                     style: TextStyle(color: Colors.white70, fontSize: 13)),
               ],
             ),
@@ -202,8 +246,9 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
     );
   }
 
+  // ─── Progress Indicator ─────────────────────────────────
   Widget _buildProgressIndicator() {
-    final steps = ['Date & Time', 'Room', 'Details', 'Review'];
+    final steps = ['Subjek', 'Tarikh', 'Bilik', 'Hantar'];
     return Row(
       children: List.generate(steps.length, (i) {
         final isActive = i == _currentStep;
@@ -217,32 +262,50 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
         return Expanded(
           child: Row(
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: isDone || isActive ? color : Colors.transparent,
-                  border: Border.all(color: color, width: 2),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: isDone
-                      ? const Icon(Icons.check, color: Colors.white, size: 16)
-                      : Text(
-                          '${i + 1}',
-                          style: TextStyle(
-                            color: isActive ? Colors.white : EHadirTheme.textSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
+              Column(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isDone || isActive ? color : Colors.transparent,
+                      border: Border.all(color: color, width: 2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: isDone
+                          ? const Icon(Icons.check, color: Colors.white, size: 16)
+                          : Text(
+                              '${i + 1}',
+                              style: TextStyle(
+                                color: isActive
+                                    ? Colors.white
+                                    : EHadirTheme.textSecondary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    steps[i],
+                    style: TextStyle(
+                      color: isActive || isDone
+                          ? EHadirTheme.textPrimary
+                          : EHadirTheme.textSecondary,
+                      fontSize: 11,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ],
               ),
               if (i < steps.length - 1)
                 Expanded(
                   child: Container(
                     height: 2,
+                    margin: const EdgeInsets.only(bottom: 18),
                     color: isDone ? EHadirTheme.approved : EHadirTheme.divider,
                   ),
                 ),
@@ -256,49 +319,124 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
   Widget _buildCurrentStep() {
     switch (_currentStep) {
       case 0:
-        return _buildStep1DateAndTime(key: const ValueKey(0));
+        return _buildStep1(key: const ValueKey(0));
       case 1:
-        return _buildStep2RoomSelection(key: const ValueKey(1));
+        return _buildStep2(key: const ValueKey(1));
       case 2:
-        return _buildStep3Details(key: const ValueKey(2));
+        return _buildStep3(key: const ValueKey(2));
       case 3:
-        return _buildStep4Review(key: const ValueKey(3));
+        return _buildStep4(key: const ValueKey(3));
       default:
         return const SizedBox.shrink();
     }
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  STEP 1: DATE & TIME
+  //  STEP 1: MAKLUMAT KELAS & PENSYARAH
   // ═══════════════════════════════════════════════════════════
-  Widget _buildStep1DateAndTime({Key? key}) {
+  Widget _buildStep1({Key? key}) {
     return Column(
       key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('Select Date & Time'),
+        _sectionTitle('Maklumat Kelas & Pensyarah'),
         const SizedBox(height: 16),
 
-        // Booking type
+        // Subject name
         _cardContainer(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Booking Type', style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 13)),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  _typeChip('Replacement', BookingType.replacement),
-                  const SizedBox(width: 10),
-                  _typeChip('Reschedule', BookingType.reschedule),
-                ],
+              const Text('Nama Subjek',
+                  style: TextStyle(
+                      color: EHadirTheme.textSecondary, fontSize: 13)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _subjectCtrl,
+                style: const TextStyle(color: EHadirTheme.textPrimary),
+                decoration: const InputDecoration(
+                  hintText: 'Contoh: Pengaturcaraan Web',
+                  prefixIcon: Icon(Icons.book_outlined,
+                      color: EHadirTheme.textSecondary, size: 20),
+                ),
+                onChanged: (_) => setState(() {}),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
 
-        // Date picker
+        // Lecturer dropdown
+        _cardContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Pensyarah',
+                  style: TextStyle(
+                      color: EHadirTheme.textSecondary, fontSize: 13)),
+              const SizedBox(height: 8),
+              _loadingLecturers
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  : Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: EHadirTheme.surfaceLight,
+                        borderRadius:
+                            BorderRadius.circular(EHadirTheme.radiusMd),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedLecturerId,
+                          isExpanded: true,
+                          hint: const Text('Pilih pensyarah',
+                              style: TextStyle(
+                                  color: EHadirTheme.textSecondary)),
+                          dropdownColor: EHadirTheme.card,
+                          style: const TextStyle(
+                              color: EHadirTheme.textPrimary, fontSize: 15),
+                          items: _lecturers
+                              .map((l) => DropdownMenuItem(
+                                    value: l.id,
+                                    child: Text(l.name),
+                                  ))
+                              .toList(),
+                          onChanged: (v) {
+                            final lec =
+                                _lecturers.firstWhere((l) => l.id == v);
+                            setState(() {
+                              _selectedLecturerId = v;
+                              _selectedLecturerName = lec.name;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        _navButtons(canNext: _isStep1Valid),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  STEP 2: PILIH TARIKH & MASA
+  // ═══════════════════════════════════════════════════════════
+  Widget _buildStep2({Key? key}) {
+    return Column(
+      key: key,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('Pilih Tarikh & Masa'),
+        const SizedBox(height: 16),
+
+        // Date picker tile
         _cardContainer(
           child: InkWell(
             onTap: _pickDate,
@@ -309,23 +447,31 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: EHadirTheme.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
+                    borderRadius:
+                        BorderRadius.circular(EHadirTheme.radiusSm),
                   ),
-                  child: const Icon(Icons.calendar_today_rounded, color: EHadirTheme.accent, size: 22),
+                  child: const Icon(Icons.calendar_today_rounded,
+                      color: EHadirTheme.accent, size: 22),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Date', style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 12)),
+                      const Text('Tarikh',
+                          style: TextStyle(
+                              color: EHadirTheme.textSecondary,
+                              fontSize: 12)),
                       const SizedBox(height: 2),
                       Text(
                         _selectedDate != null
-                            ? DateFormat('EEEE, dd MMMM yyyy').format(_selectedDate!)
-                            : 'Tap to select date',
+                            ? DateFormat('EEEE, dd MMMM yyyy')
+                                .format(_selectedDate!)
+                            : 'Tekan untuk pilih tarikh',
                         style: TextStyle(
-                          color: _selectedDate != null ? EHadirTheme.textPrimary : EHadirTheme.textSecondary,
+                          color: _selectedDate != null
+                              ? EHadirTheme.textPrimary
+                              : EHadirTheme.textSecondary,
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),
@@ -333,32 +479,41 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, color: EHadirTheme.textSecondary),
+                const Icon(Icons.chevron_right_rounded,
+                    color: EHadirTheme.textSecondary),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
 
-        // Time range
+        // Time pickers side by side
         Row(
           children: [
             Expanded(
               child: _cardContainer(
                 child: InkWell(
                   onTap: () => _pickTime(isStart: true),
-                  borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
                   child: Column(
                     children: [
-                      const Text('Start Time', style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 12)),
+                      const Text('Masa Mula',
+                          style: TextStyle(
+                              color: EHadirTheme.textSecondary,
+                              fontSize: 12)),
                       const SizedBox(height: 6),
                       Text(
-                        _formatTimeOfDay(_startTime),
+                        _formatTime(_startTime),
                         style: const TextStyle(
                           color: EHadirTheme.textPrimary,
                           fontSize: 28,
                           fontWeight: FontWeight.w700,
                         ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_timeToMinutes(_startTime)} min',
+                        style: const TextStyle(
+                            color: EHadirTheme.textSecondary, fontSize: 11),
                       ),
                     ],
                   ),
@@ -367,24 +522,33 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Icon(Icons.arrow_forward_rounded, color: EHadirTheme.textSecondary),
+              child: Icon(Icons.arrow_forward_rounded,
+                  color: EHadirTheme.textSecondary),
             ),
             Expanded(
               child: _cardContainer(
                 child: InkWell(
                   onTap: () => _pickTime(isStart: false),
-                  borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
                   child: Column(
                     children: [
-                      const Text('End Time', style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 12)),
+                      const Text('Masa Tamat',
+                          style: TextStyle(
+                              color: EHadirTheme.textSecondary,
+                              fontSize: 12)),
                       const SizedBox(height: 6),
                       Text(
-                        _formatTimeOfDay(_endTime),
+                        _formatTime(_endTime),
                         style: const TextStyle(
                           color: EHadirTheme.textPrimary,
                           fontSize: 28,
                           fontWeight: FontWeight.w700,
                         ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_timeToMinutes(_endTime)} min',
+                        style: const TextStyle(
+                            color: EHadirTheme.textSecondary, fontSize: 11),
                       ),
                     ],
                   ),
@@ -394,55 +558,52 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
           ],
         ),
         const SizedBox(height: 10),
+
         // Duration display
-        if (_endTime.hour * 60 + _endTime.minute > _startTime.hour * 60 + _startTime.minute)
+        if (_timeToMinutes(_endTime) > _timeToMinutes(_startTime))
           Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: EHadirTheme.accent.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
               ),
               child: Text(
-                'Duration: ${_calculateDuration()} hours',
-                style: const TextStyle(color: EHadirTheme.accent, fontSize: 13, fontWeight: FontWeight.w500),
+                'Tempoh: ${_calcDuration()}',
+                style: const TextStyle(
+                    color: EHadirTheme.accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500),
               ),
             ),
           ),
-        const SizedBox(height: 24),
-        _navigationButtons(canNext: _isStep1Valid),
+        const SizedBox(height: 28),
+        _navButtons(canNext: _isStep2Valid, showBack: true),
       ],
     );
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  STEP 2: ROOM SELECTION
+  //  STEP 3: PILIH BILIK
   // ═══════════════════════════════════════════════════════════
-  Widget _buildStep2RoomSelection({Key? key}) {
-    final db = ref.read(mockDbProvider);
-    final availableRooms = _selectedDate != null
-        ? db.getAvailableRooms(_selectedDate!, _startTime, _endTime)
-        : <Room>[];
-    final allRooms = db.rooms;
-
+  Widget _buildStep3({Key? key}) {
     return Column(
       key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('Select Room'),
+        _sectionTitle('Pilih Bilik'),
         const SizedBox(height: 8),
-        Text(
-          'Showing availability for ${_selectedDate != null ? DateFormat('dd MMM').format(_selectedDate!) : '—'}, '
-          '${_formatTimeOfDay(_startTime)}–${_formatTimeOfDay(_endTime)}',
-          style: const TextStyle(color: EHadirTheme.textSecondary, fontSize: 13),
+        const Text(
+          'Pilih bilik yang dikehendaki untuk kelas gantian.',
+          style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 13),
         ),
         const SizedBox(height: 16),
-        ...allRooms.map((room) {
-          final isAvailable = availableRooms.any((r) => r.id == room.id);
-          final isSelected = _selectedRoom == room.name;
 
+        ..._rooms.map((room) {
+          final isSelected = _selectedRoom == room;
           return GestureDetector(
-            onTap: isAvailable ? () => setState(() => _selectedRoom = room.name) : null,
+            onTap: () => setState(() => _selectedRoom = room),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               margin: const EdgeInsets.only(bottom: 10),
@@ -451,196 +612,69 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
                 color: isSelected
                     ? EHadirTheme.accent.withValues(alpha: 0.15)
                     : EHadirTheme.card,
-                borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+                borderRadius:
+                    BorderRadius.circular(EHadirTheme.radiusMd),
                 border: Border.all(
                   color: isSelected
                       ? EHadirTheme.accent
-                      : isAvailable
-                          ? EHadirTheme.divider
-                          : EHadirTheme.rejected.withValues(alpha: 0.3),
+                      : EHadirTheme.divider,
                   width: isSelected ? 2 : 1,
                 ),
               ),
               child: Row(
                 children: [
-                  // Availability indicator
                   Container(
-                    width: 12,
-                    height: 12,
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isAvailable ? EHadirTheme.approved : EHadirTheme.rejected,
-                      boxShadow: [
-                        BoxShadow(
-                          color: (isAvailable ? EHadirTheme.approved : EHadirTheme.rejected)
-                              .withValues(alpha: 0.4),
-                          blurRadius: 6,
-                        ),
-                      ],
+                      color: isSelected
+                          ? EHadirTheme.accent.withValues(alpha: 0.2)
+                          : EHadirTheme.surfaceLight,
+                      borderRadius:
+                          BorderRadius.circular(EHadirTheme.radiusSm),
+                    ),
+                    child: Icon(
+                      Icons.meeting_room_rounded,
+                      color: isSelected
+                          ? EHadirTheme.accent
+                          : EHadirTheme.textSecondary,
+                      size: 24,
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 16),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          room.name,
-                          style: TextStyle(
-                            color: isAvailable ? EHadirTheme.textPrimary : EHadirTheme.textSecondary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '${room.building} · ${room.typeLabel} · ${room.capacity} pax',
-                          style: TextStyle(
-                            color: isAvailable
-                                ? EHadirTheme.textSecondary
-                                : EHadirTheme.textSecondary.withValues(alpha: 0.5),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      room,
+                      style: TextStyle(
+                        color: EHadirTheme.textPrimary,
+                        fontSize: 16,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w500,
+                      ),
                     ),
                   ),
-                  if (isAvailable)
-                    const Text('Available', style: TextStyle(color: EHadirTheme.approved, fontSize: 12, fontWeight: FontWeight.w600))
-                  else
-                    const Text('Occupied', style: TextStyle(color: EHadirTheme.rejected, fontSize: 12, fontWeight: FontWeight.w600)),
                   if (isSelected)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 8),
-                      child: Icon(Icons.check_circle_rounded, color: EHadirTheme.accent, size: 22),
-                    ),
+                    const Icon(Icons.check_circle_rounded,
+                        color: EHadirTheme.accent, size: 24),
                 ],
               ),
             ),
           );
         }),
-        const SizedBox(height: 24),
-        _navigationButtons(canNext: _isStep2Valid, showBack: true),
+        const SizedBox(height: 28),
+        _navButtons(canNext: _isStep3Valid, showBack: true),
       ],
     );
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  STEP 3: DETAILS
+  //  STEP 4: PENGESAHAN & HANTAR
   // ═══════════════════════════════════════════════════════════
-  Widget _buildStep3Details({Key? key}) {
-    final db = ref.read(mockDbProvider);
-    final user = ref.read(authProvider).currentUser;
-    final subjects = db.getSubjectsForLecturer(user?.id ?? '');
-    final cohorts = db.getCohortsForLecturer(user?.id ?? '');
-
+  Widget _buildStep4({Key? key}) {
     return Column(
       key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('Class Details'),
-        const SizedBox(height: 16),
-
-        // Subject dropdown
-        _cardContainer(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Subject', style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 13)),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: subjects.map((s) {
-                  final selected = _selectedSubject == s;
-                  return ChoiceChip(
-                    label: Text(s),
-                    selected: selected,
-                    onSelected: (_) => setState(() => _selectedSubject = s),
-                    selectedColor: EHadirTheme.accent.withValues(alpha: 0.3),
-                    checkmarkColor: EHadirTheme.accent,
-                    labelStyle: TextStyle(
-                      color: selected ? EHadirTheme.accent : EHadirTheme.textPrimary,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // Cohort dropdown
-        _cardContainer(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Cohort', style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 13)),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: cohorts.map((c) {
-                  final selected = _selectedCohort == c;
-                  return ChoiceChip(
-                    label: Text(c),
-                    selected: selected,
-                    onSelected: (_) => setState(() => _selectedCohort = c),
-                    selectedColor: EHadirTheme.accent.withValues(alpha: 0.3),
-                    checkmarkColor: EHadirTheme.accent,
-                    labelStyle: TextStyle(
-                      color: selected ? EHadirTheme.accent : EHadirTheme.textPrimary,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // Remarks
-        _cardContainer(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Remarks (Optional)', style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 13)),
-              const SizedBox(height: 10),
-              TextField(
-                onChanged: (v) => _remarks = v,
-                maxLines: 3,
-                style: const TextStyle(color: EHadirTheme.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'Add any notes about this booking...',
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        _navigationButtons(canNext: _isStep3Valid, showBack: true),
-      ],
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  //  STEP 4: REVIEW & SUBMIT
-  // ═══════════════════════════════════════════════════════════
-  Widget _buildStep4Review({Key? key}) {
-    // Run conflict check when entering review step
-    if (_conflictResult == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _runConflictCheck());
-    }
-
-    return Column(
-      key: key,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionTitle('Review & Submit'),
+        _sectionTitle('Pengesahan & Hantar'),
         const SizedBox(height: 16),
 
         // Summary card
@@ -653,288 +687,91 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
           ),
           child: Column(
             children: [
-              _reviewRow(Icons.event_rounded, 'Date',
-                  _selectedDate != null ? DateFormat('EEEE, dd MMMM yyyy').format(_selectedDate!) : '—'),
+              _reviewRow(Icons.book_rounded, 'Subjek',
+                  _subjectCtrl.text.trim()),
               _reviewDivider(),
-              _reviewRow(Icons.schedule_rounded, 'Time',
-                  '${_formatTimeOfDay(_startTime)} – ${_formatTimeOfDay(_endTime)}'),
+              _reviewRow(Icons.person_rounded, 'Pensyarah',
+                  _selectedLecturerName ?? '—'),
               _reviewDivider(),
-              _reviewRow(Icons.room_rounded, 'Room', _selectedRoom ?? '—'),
+              _reviewRow(
+                  Icons.event_rounded,
+                  'Tarikh',
+                  _selectedDate != null
+                      ? DateFormat('EEEE, dd MMM yyyy')
+                          .format(_selectedDate!)
+                      : '—'),
               _reviewDivider(),
-              _reviewRow(Icons.book_rounded, 'Subject', _selectedSubject ?? '—'),
+              _reviewRow(Icons.schedule_rounded, 'Masa',
+                  '${_formatTime(_startTime)} – ${_formatTime(_endTime)}'),
               _reviewDivider(),
-              _reviewRow(Icons.group_rounded, 'Cohort', _selectedCohort ?? '—'),
-              _reviewDivider(),
-              _reviewRow(Icons.swap_horiz_rounded, 'Type',
-                  _bookingType == BookingType.replacement ? 'Replacement Class' : 'Rescheduled Class'),
-              if (_remarks.isNotEmpty) ...[
-                _reviewDivider(),
-                _reviewRow(Icons.notes_rounded, 'Remarks', _remarks),
-              ],
+              _reviewRow(
+                  Icons.room_rounded, 'Bilik', _selectedRoom ?? '—'),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-
-        // Conflict analysis
-        if (_conflictResult != null) _buildConflictPanel(),
+        const SizedBox(height: 8),
+        // Minutes from midnight display (technical detail)
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: EHadirTheme.surfaceLight,
+            borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded,
+                  color: EHadirTheme.textSecondary, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Database: startTime=${_timeToMinutes(_startTime)}, endTime=${_timeToMinutes(_endTime)} (minit dari tengah malam)',
+                  style: const TextStyle(
+                      color: EHadirTheme.textSecondary, fontSize: 11),
+                ),
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 24),
 
-        // Submit buttons
-        if (_conflictResult == null || !_conflictResult!.hasHardConflicts) ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isSubmitting
-                  ? null
-                  : () => _submitBooking(
-                        forceSubmit: _conflictResult?.hasConflicts ?? false,
-                      ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _conflictResult?.hasConflicts == true
-                    ? EHadirTheme.pending
-                    : EHadirTheme.accent,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(
-                      _conflictResult?.hasConflicts == true
-                          ? 'Submit for Admin Review'
-                          : 'Submit Booking',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
+        // Submit button
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isSubmitting ? null : _handleSubmit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: EHadirTheme.accent,
+              disabledBackgroundColor: EHadirTheme.surfaceLight,
+              padding: const EdgeInsets.symmetric(vertical: 16),
             ),
+            child: _isSubmitting
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Hantar',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
           ),
-        ] else ...[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: EHadirTheme.rejected.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
-              border: Border.all(color: EHadirTheme.rejected.withValues(alpha: 0.3)),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.block_rounded, color: EHadirTheme.rejected),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Cannot submit — hard conflicts detected. Please go back and choose a different room or time.',
-                    style: TextStyle(color: EHadirTheme.rejected, fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
         const SizedBox(height: 12),
         Center(
           child: TextButton.icon(
             onPressed: () => setState(() {
               _currentStep = 0;
-              _conflictResult = null;
             }),
             icon: const Icon(Icons.arrow_back_rounded, size: 18),
-            label: const Text('Go Back to Edit'),
+            label: const Text('Kembali untuk Sunting'),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildConflictPanel() {
-    final result = _conflictResult!;
-    if (!result.hasConflicts) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: EHadirTheme.approved.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
-          border: Border.all(color: EHadirTheme.approved.withValues(alpha: 0.3)),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.check_circle_rounded, color: EHadirTheme.approved, size: 22),
-            SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('No Conflicts Detected',
-                      style: TextStyle(color: EHadirTheme.approved, fontSize: 15, fontWeight: FontWeight.w600)),
-                  SizedBox(height: 2),
-                  Text('This booking will be auto-approved immediately.',
-                      style: TextStyle(color: EHadirTheme.textSecondary, fontSize: 13)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: (result.hasHardConflicts ? EHadirTheme.rejected : EHadirTheme.pending)
-                .withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
-            border: Border.all(
-              color: (result.hasHardConflicts ? EHadirTheme.rejected : EHadirTheme.pending)
-                  .withValues(alpha: 0.3),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                result.hasHardConflicts ? Icons.error_rounded : Icons.warning_amber_rounded,
-                color: result.hasHardConflicts ? EHadirTheme.rejected : EHadirTheme.pending,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  result.hasHardConflicts
-                      ? '${result.conflicts.length} conflict(s) found — submission blocked'
-                      : '${result.conflicts.length} warning(s) — you can still submit for review',
-                  style: TextStyle(
-                    color: result.hasHardConflicts ? EHadirTheme.rejected : EHadirTheme.pending,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        ...result.conflicts.map((c) => Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: EHadirTheme.surfaceLight,
-                borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
-                border: Border(
-                  left: BorderSide(
-                    color: c.isHard ? EHadirTheme.rejected : EHadirTheme.pending,
-                    width: 3,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Text(c.icon, style: const TextStyle(fontSize: 20)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          c.typeLabel,
-                          style: TextStyle(
-                            color: c.isHard ? EHadirTheme.rejected : EHadirTheme.pending,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(c.description,
-                            style: const TextStyle(color: EHadirTheme.textSecondary, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: (c.isHard ? EHadirTheme.rejected : EHadirTheme.pending)
-                          .withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      c.isHard ? 'BLOCKED' : 'WARNING',
-                      style: TextStyle(
-                        color: c.isHard ? EHadirTheme.rejected : EHadirTheme.pending,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )),
-      ],
-    );
-  }
-
   // ═══════════════════════════════════════════════════════════
-  //  SUCCESS VIEW
-  // ═══════════════════════════════════════════════════════════
-  Widget _buildSuccessView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.elasticOut,
-              builder: (context, value, child) => Transform.scale(
-                scale: value,
-                child: child,
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: EHadirTheme.approved.withValues(alpha: 0.15),
-                ),
-                child: const Icon(Icons.check_circle_rounded, color: EHadirTheme.approved, size: 72),
-              ),
-            ),
-            const SizedBox(height: 28),
-            Text(
-              _successMessage,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: EHadirTheme.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Booking for ${_selectedSubject ?? ''} in ${_selectedRoom ?? ''}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: EHadirTheme.textSecondary, fontSize: 15),
-            ),
-            const SizedBox(height: 36),
-            ElevatedButton.icon(
-              onPressed: _resetForm,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Create Another Booking'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: EHadirTheme.accent,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  //  HELPERS & SHARED WIDGETS
+  //  SHARED WIDGETS & HELPERS
   // ═══════════════════════════════════════════════════════════
 
   Widget _sectionTitle(String text) {
@@ -942,7 +779,7 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
       text,
       style: const TextStyle(
         color: EHadirTheme.textPrimary,
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: FontWeight.w700,
       ),
     );
@@ -961,35 +798,9 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
     );
   }
 
-  Widget _typeChip(String label, BookingType type) {
-    final selected = _bookingType == type;
-    return GestureDetector(
-      onTap: () => setState(() => _bookingType = type),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? EHadirTheme.accent.withValues(alpha: 0.2) : EHadirTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
-          border: Border.all(
-            color: selected ? EHadirTheme.accent : EHadirTheme.divider,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? EHadirTheme.accent : EHadirTheme.textSecondary,
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _reviewRow(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -997,34 +808,34 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
           const SizedBox(width: 12),
           SizedBox(
             width: 80,
-            child: Text(label, style: const TextStyle(color: EHadirTheme.textSecondary, fontSize: 14)),
+            child: Text(label,
+                style: const TextStyle(
+                    color: EHadirTheme.textSecondary, fontSize: 14)),
           ),
           Expanded(
             child: Text(value,
                 style: const TextStyle(
-                    color: EHadirTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
+                    color: EHadirTheme.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600)),
           ),
         ],
       ),
     );
   }
 
-  Widget _reviewDivider() {
-    return const Divider(color: EHadirTheme.divider, height: 16);
-  }
+  Widget _reviewDivider() =>
+      const Divider(color: EHadirTheme.divider, height: 16);
 
-  Widget _navigationButtons({required bool canNext, bool showBack = false}) {
+  Widget _navButtons({required bool canNext, bool showBack = false}) {
     return Row(
       children: [
         if (showBack)
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () => setState(() {
-                _currentStep--;
-                _conflictResult = null;
-              }),
+              onPressed: () => setState(() => _currentStep--),
               icon: const Icon(Icons.arrow_back_rounded, size: 18),
-              label: const Text('Back'),
+              label: const Text('Kembali'),
             ),
           ),
         if (showBack) const SizedBox(width: 12),
@@ -1042,7 +853,9 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Next', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text('Seterusnya',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
                 SizedBox(width: 6),
                 Icon(Icons.arrow_forward_rounded, size: 18),
               ],
@@ -1053,16 +866,13 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
     );
   }
 
-  String _formatTimeOfDay(TimeOfDay t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-
-  String _calculateDuration() {
-    final diff = (_endTime.hour * 60 + _endTime.minute) - (_startTime.hour * 60 + _startTime.minute);
+  String _calcDuration() {
+    final diff = _timeToMinutes(_endTime) - _timeToMinutes(_startTime);
     if (diff <= 0) return '0';
     final hours = diff ~/ 60;
     final mins = diff % 60;
-    if (mins == 0) return '$hours';
-    return '${hours}h ${mins}m';
+    if (mins == 0) return '$hours jam';
+    return '${hours}j ${mins}m';
   }
 
   Future<void> _pickDate() async {
@@ -1071,21 +881,16 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
       initialDate: DateTime.now().add(const Duration(days: 1)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 60)),
-      builder: (context, child) => Theme(
+      builder: (ctx, child) => Theme(
         data: EHadirTheme.darkTheme.copyWith(
-          colorScheme: EHadirTheme.darkTheme.colorScheme.copyWith(
-            primary: EHadirTheme.accent,
-          ),
+          colorScheme: EHadirTheme.darkTheme.colorScheme
+              .copyWith(primary: EHadirTheme.accent),
         ),
         child: child!,
       ),
     );
     if (dt != null) {
-      setState(() {
-        _selectedDate = dt;
-        _selectedRoom = null; // Reset room on date change
-        _conflictResult = null;
-      });
+      setState(() => _selectedDate = dt);
     }
   }
 
@@ -1093,11 +898,10 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
     final t = await showTimePicker(
       context: context,
       initialTime: isStart ? _startTime : _endTime,
-      builder: (context, child) => Theme(
+      builder: (ctx, child) => Theme(
         data: EHadirTheme.darkTheme.copyWith(
-          colorScheme: EHadirTheme.darkTheme.colorScheme.copyWith(
-            primary: EHadirTheme.accent,
-          ),
+          colorScheme: EHadirTheme.darkTheme.colorScheme
+              .copyWith(primary: EHadirTheme.accent),
         ),
         child: child!,
       ),
@@ -1109,9 +913,14 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
         } else {
           _endTime = t;
         }
-        _selectedRoom = null; // Reset room on time change
-        _conflictResult = null;
       });
     }
   }
+}
+
+/// Simple helper class for the lecturer dropdown.
+class _LecturerOption {
+  final String id;
+  final String name;
+  const _LecturerOption({required this.id, required this.name});
 }

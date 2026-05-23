@@ -1,188 +1,122 @@
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/booking.dart';
-import '../models/conflict_result.dart';
 import 'mock_db_service.dart';
+import 'package:flutter/material.dart';
 
-final bookingProvider = ChangeNotifierProvider<BookingService>((ref) {
-  final db = ref.watch(mockDbProvider);
-  return BookingService(db);
+final firestoreBookingProvider =
+    ChangeNotifierProvider<FirestoreBookingService>((ref) {
+  return FirestoreBookingService(mockDb: ref.read(mockDbProvider));
 });
 
-/// Booking business-logic layer.
+/// Firestore-backed booking service for Module 6.
 ///
-/// Wraps [MockDatabaseService] with conflict detection + approval workflow.
-class BookingService extends ChangeNotifier {
-  final MockDatabaseService _db;
+/// Provides:
+///   • [checkConflict] — queries the `bookings` collection for time/room overlaps
+///   • [saveBooking]   — validates then persists a new booking document
+class FirestoreBookingService extends ChangeNotifier {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final MockDatabaseService mockDb;
 
-  BookingService(this._db);
+  static const String _collection = 'bookings';
 
-  // ═══════════════════════════════════════════════════════════
-  //  CONFLICT DETECTION ENGINE
-  // ═══════════════════════════════════════════════════════════
-
-  /// Run a full conflict analysis against the master timetable AND
-  /// already-approved bookings.  Returns a structured [ConflictResult].
-  ConflictResult checkAllConflicts(Booking proposed) {
-    final List<ConflictDetail> conflicts = [];
-
-    final pStart = proposed.startMinutes;
-    final pEnd   = proposed.endMinutes;
-
-    // ── 1. Master timetable ──────────────────────────────────
-    for (final t in _db.masterTimetable) {
-      if (t.dayOfWeek != proposed.date.weekday) continue;
-      if (pStart >= t.endMinutes || pEnd <= t.startMinutes) continue;
-
-      // Time overlaps — check each dimension
-      if (t.room == proposed.room) {
-        conflicts.add(ConflictDetail(
-          type: ConflictType.room,
-          description:
-              '${t.room} is occupied by "${t.subject}" (${_fmtTime(t.startTime)}–${_fmtTime(t.endTime)})',
-          isHard: true,
-          conflictingEntity: t.room,
-        ));
-      }
-      if (t.lecturerId == proposed.lecturerId) {
-        conflicts.add(ConflictDetail(
-          type: ConflictType.lecturer,
-          description:
-              'You already have "${t.subject}" scheduled at ${_fmtTime(t.startTime)}–${_fmtTime(t.endTime)}',
-          isHard: false,
-          conflictingEntity: _db.getLecturerName(t.lecturerId),
-        ));
-      }
-      if (t.cohort == proposed.cohort) {
-        conflicts.add(ConflictDetail(
-          type: ConflictType.cohort,
-          description:
-              'Cohort ${t.cohort} has "${t.subject}" at ${_fmtTime(t.startTime)}–${_fmtTime(t.endTime)}',
-          isHard: false,
-          conflictingEntity: t.cohort,
-        ));
-      }
-    }
-
-    // ── 2. Already-approved bookings ─────────────────────────
-    for (final b in _db.approvedBookings) {
-      if (b.date.year != proposed.date.year ||
-          b.date.month != proposed.date.month ||
-          b.date.day != proposed.date.day) {
-        continue;
-      }
-      if (pStart >= b.endMinutes || pEnd <= b.startMinutes) {
-        continue;
-      }
-
-      if (b.room == proposed.room) {
-        conflicts.add(ConflictDetail(
-          type: ConflictType.room,
-          description:
-              '${b.room} is reserved for "${b.subject}" (${_fmtTime(b.startTime)}–${_fmtTime(b.endTime)})',
-          isHard: true,
-          conflictingEntity: b.room,
-        ));
-      }
-      if (b.lecturerId == proposed.lecturerId) {
-        conflicts.add(ConflictDetail(
-          type: ConflictType.lecturer,
-          description:
-              'You have a replacement class "${b.subject}" at ${_fmtTime(b.startTime)}–${_fmtTime(b.endTime)}',
-          isHard: false,
-          conflictingEntity: _db.getLecturerName(b.lecturerId),
-        ));
-      }
-      if (b.cohort == proposed.cohort) {
-        conflicts.add(ConflictDetail(
-          type: ConflictType.cohort,
-          description:
-              'Cohort ${b.cohort} has replacement class "${b.subject}" at ${_fmtTime(b.startTime)}–${_fmtTime(b.endTime)}',
-          isHard: false,
-          conflictingEntity: b.cohort,
-        ));
-      }
-    }
-
-    // ── 3. Pending bookings (avoid double-pending same slot) ─
-    for (final b in _db.pendingBookings) {
-      if (b.date.year != proposed.date.year ||
-          b.date.month != proposed.date.month ||
-          b.date.day != proposed.date.day) {
-        continue;
-      }
-      if (pStart >= b.endMinutes || pEnd <= b.startMinutes) {
-        continue;
-      }
-
-      if (b.room == proposed.room) {
-        conflicts.add(ConflictDetail(
-          type: ConflictType.room,
-          description:
-              '${b.room} has a pending reservation for "${b.subject}" (${_fmtTime(b.startTime)}–${_fmtTime(b.endTime)})',
-          isHard: false,
-          conflictingEntity: b.room,
-        ));
-      }
-    }
-
-    return ConflictResult(conflicts: conflicts);
-  }
+  FirestoreBookingService({required this.mockDb});
 
   // ═══════════════════════════════════════════════════════════
-  //  SUBMIT BOOKING
+  //  CONFLICT DETECTION ENGINE (CRITICAL)
   // ═══════════════════════════════════════════════════════════
 
-  /// Submit a booking request.
+  /// Queries the `bookings` collection to check if [roomId] is already
+  /// booked on [date] at an overlapping time.
   ///
-  /// • No conflicts → auto-approved.
-  /// • Soft conflicts only + [forceSubmit] → pending for admin review.
-  /// • Hard conflicts → throws.
-  Future<Booking> submitBooking(Booking booking, {bool forceSubmit = false}) async {
-    final result = checkAllConflicts(booking);
+  /// Returns `true` if a conflict exists, using the exact overlap formula:
+  ///   `(proposedStart < existingEnd) && (proposedEnd > existingStart)`
+  Future<bool> checkConflict(
+    String roomId,
+    DateTime date,
+    int startMin,
+    int endMin,
+  ) async {
+    // Normalise the date to midnight for Firestore comparison
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayTimestamp = Timestamp.fromDate(dayStart);
 
-    if (result.hasHardConflicts) {
-      throw BookingConflictException(
-        'This booking has hard conflicts that cannot be overridden.',
-        result,
-      );
+    // 1. Check against master timetable and uploaded class slots
+    final isOccupiedInTimetable = mockDb.isRoomOccupied(
+      roomId,
+      date,
+      TimeOfDay(hour: startMin ~/ 60, minute: startMin % 60),
+      TimeOfDay(hour: endMin ~/ 60, minute: endMin % 60),
+    );
+
+    if (isOccupiedInTimetable) {
+      return true;
     }
 
-    BookingStatus targetStatus;
-    if (!result.hasConflicts) {
-      targetStatus = BookingStatus.approved;
-    } else if (forceSubmit) {
-      targetStatus = BookingStatus.pending;
-    } else {
-      throw BookingConflictException(
-        'Conflicts detected. Review them and force-submit if needed.',
-        result,
-      );
-    }
+    try {
+      // Query all bookings for this room on this specific date
+      final snapshot = await _db
+          .collection(_collection)
+          .where('roomId', isEqualTo: roomId)
+          .where('date', isEqualTo: dayTimestamp)
+          .get();
 
-    final finalBooking = booking.copyWith(status: targetStatus);
-    final saved = await _db.submitBookingRequest(finalBooking);
-    notifyListeners();
-    return saved;
+      // Iterate through results and check for overlap
+      for (final doc in snapshot.docs) {
+        final existingStart = doc['startTime'] as int;
+        final existingEnd = doc['endTime'] as int;
+
+        // Exact overlap formula from the spec
+        if ((startMin < existingEnd) && (endMin > existingStart)) {
+          return true; // Conflict exists!
+        }
+      }
+
+      return false; // No conflict
+    } catch (e) {
+      debugPrint('FirestoreBookingService.checkConflict error: $e');
+      // If we can't verify, assume conflict to be safe
+      return true;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  ADMIN ACTIONS
+  //  SAVE BOOKING
   // ═══════════════════════════════════════════════════════════
 
-  Future<void> approveBooking(String bookingId, String adminId) async {
-    await _db.approveBooking(bookingId, adminId);
+  /// Checks for conflicts first, then saves the booking to Firestore.
+  ///
+  /// Throws [BookingConflictException] if the room is already booked.
+  Future<void> saveBooking(FirestoreBooking booking) async {
+    final hasConflict = await checkConflict(
+      booking.roomId,
+      booking.date,
+      booking.startTime,
+      booking.endTime,
+    );
+
+    if (hasConflict) {
+      throw BookingConflictException(
+        'Bilik ${booking.roomId} sudah ditempah pada masa tersebut. '
+        'Sila pilih masa atau bilik lain.',
+      );
+    }
+
+    // No conflict → save to Firestore
+    await _db.collection(_collection).add(booking.toFirestore());
     notifyListeners();
   }
 
-  Future<void> rejectBooking(String bookingId, String adminId, {String? reason}) async {
-    await _db.rejectBooking(bookingId, adminId, reason: reason);
-    notifyListeners();
-  }
+  /// Fetch all bookings for a specific lecturer.
+  Future<List<FirestoreBooking>> getBookingsForLecturer(String lecturerId) async {
+    final snapshot = await _db
+        .collection(_collection)
+        .where('lecturerId', isEqualTo: lecturerId)
+        .orderBy('date', descending: true)
+        .get();
 
-  // ─── formatting helper ────────────────────────────────────
-  String _fmtTime(TimeOfDay t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    return snapshot.docs.map(FirestoreBooking.fromFirestore).toList();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -191,9 +125,7 @@ class BookingService extends ChangeNotifier {
 
 class BookingConflictException implements Exception {
   final String message;
-  final ConflictResult conflicts;
-
-  BookingConflictException(this.message, this.conflicts);
+  BookingConflictException(this.message);
 
   @override
   String toString() => message;

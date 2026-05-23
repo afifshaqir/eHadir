@@ -1,138 +1,73 @@
-import 'package:flutter/material.dart';
-import 'timetable.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum BookingStatus { pending, approved, rejected }
-enum BookingType { replacement, reschedule }
-
-class Booking {
+/// Firestore-backed booking model for Module 6.
+///
+/// Fields stored in the `bookings` Firestore collection:
+///   - `id`          : Document ID (auto-generated)
+///   - `subjectName` : Name of the subject
+///   - `lecturerId`  : UID of the lecturer who booked
+///   - `lecturerName`: Display name of the lecturer
+///   - `roomId`      : Room name (e.g. "Bilik Kuliah A1")
+///   - `date`        : Firestore Timestamp (normalised to midnight)
+///   - `startTime`   : int — minutes from midnight (e.g. 09:00 = 540)
+///   - `endTime`     : int — minutes from midnight (e.g. 11:00 = 660)
+class FirestoreBooking {
   final String id;
+  final String subjectName;
   final String lecturerId;
-  final String? originalTimetableId; 
-  final BookingType type;
-  
-  final String subject;
-  final String cohort;
-  final String room;
-  final DateTime date; 
-  final TimeOfDay startTime;
-  final TimeOfDay endTime;
-  
-  final BookingStatus status;
-  final DateTime createdAt;
+  final String lecturerName;
+  final String roomId;
+  final DateTime date;
+  final int startTime; // minutes from midnight
+  final int endTime;   // minutes from midnight
 
-  // Review / approval workflow fields
-  final String? reviewedBy;       // Admin user ID
-  final DateTime? reviewedAt;
-  final String? rejectionReason;
-  final String? remarks;          // Lecturer's notes
-
-  int get startMinutes => startTime.hour * 60 + startTime.minute;
-  int get endMinutes => endTime.hour * 60 + endTime.minute;
-
-  Booking({
+  FirestoreBooking({
     required this.id,
+    required this.subjectName,
     required this.lecturerId,
-    this.originalTimetableId,
-    required this.type,
-    required this.subject,
-    required this.cohort,
-    required this.room,
+    required this.lecturerName,
+    required this.roomId,
     required this.date,
     required this.startTime,
     required this.endTime,
-    required this.status,
-    required this.createdAt,
-    this.reviewedBy,
-    this.reviewedAt,
-    this.rejectionReason,
-    this.remarks,
   });
 
-  Booking copyWith({
-    String? id,
-    String? lecturerId,
-    String? originalTimetableId,
-    BookingType? type,
-    String? subject,
-    String? cohort,
-    String? room,
-    DateTime? date,
-    TimeOfDay? startTime,
-    TimeOfDay? endTime,
-    BookingStatus? status,
-    DateTime? createdAt,
-    String? reviewedBy,
-    DateTime? reviewedAt,
-    String? rejectionReason,
-    String? remarks,
-  }) {
-    return Booking(
-      id: id ?? this.id,
-      lecturerId: lecturerId ?? this.lecturerId,
-      originalTimetableId: originalTimetableId ?? this.originalTimetableId,
-      type: type ?? this.type,
-      subject: subject ?? this.subject,
-      cohort: cohort ?? this.cohort,
-      room: room ?? this.room,
-      date: date ?? this.date,
-      startTime: startTime ?? this.startTime,
-      endTime: endTime ?? this.endTime,
-      status: status ?? this.status,
-      createdAt: createdAt ?? this.createdAt,
-      reviewedBy: reviewedBy ?? this.reviewedBy,
-      reviewedAt: reviewedAt ?? this.reviewedAt,
-      rejectionReason: rejectionReason ?? this.rejectionReason,
-      remarks: remarks ?? this.remarks,
+  /// Convert a Firestore document snapshot → [FirestoreBooking].
+  factory FirestoreBooking.fromFirestore(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return FirestoreBooking(
+      id: doc.id,
+      subjectName: d['subjectName'] ?? '',
+      lecturerId: d['lecturerId'] ?? '',
+      lecturerName: d['lecturerName'] ?? '',
+      roomId: d['roomId'] ?? '',
+      date: (d['date'] as Timestamp).toDate(),
+      startTime: d['startTime'] ?? 0,
+      endTime: d['endTime'] ?? 0,
     );
   }
 
-  bool overlapsWith(Booking other) {
-    if (date.year != other.date.year || 
-        date.month != other.date.month || 
-        date.day != other.date.day) {
-      return false;
-    }
-    return startMinutes < other.endMinutes && endMinutes > other.startMinutes;
-  }
+  /// Convert this booking → Firestore-compatible map.
+  Map<String, dynamic> toFirestore() => {
+        'subjectName': subjectName,
+        'lecturerId': lecturerId,
+        'lecturerName': lecturerName,
+        'roomId': roomId,
+        'date': Timestamp.fromDate(
+          DateTime(date.year, date.month, date.day), // normalise to midnight
+        ),
+        'startTime': startTime,
+        'endTime': endTime,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
 
-  // Helper: check overlap against a Master Timetable slot for the same date
-  bool overlapsWithTimetable(Timetable timetable, DateTime checkDate) {
-    if (timetable.dayOfWeek != checkDate.weekday) return false;
-    if (date.year != checkDate.year || 
-        date.month != checkDate.month || 
-        date.day != checkDate.day) {
-      return false;
-    }
-    return startMinutes < timetable.endMinutes && endMinutes > timetable.startMinutes;
-  }
-
-  Timetable toTimetable() {
-    return Timetable(
-      id: 'booking_$id',
-      subject: subject,
-      lecturerId: lecturerId,
-      room: room,
-      cohort: cohort,
-      dayOfWeek: date.weekday,
-      startTime: startTime,
-      endTime: endTime,
-    );
-  }
-
-  String get statusLabel {
-    switch (status) {
-      case BookingStatus.pending:
-        return 'Pending Review';
-      case BookingStatus.approved:
-        return 'Approved';
-      case BookingStatus.rejected:
-        return 'Rejected';
-    }
-  }
-
+  /// Human-readable time range, e.g. "09:00 – 11:00".
   String get timeRangeFormatted {
-    String fmt(TimeOfDay t) =>
-        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    String fmt(int mins) {
+      final h = (mins ~/ 60).toString().padLeft(2, '0');
+      final m = (mins % 60).toString().padLeft(2, '0');
+      return '$h:$m';
+    }
     return '${fmt(startTime)} – ${fmt(endTime)}';
   }
 }

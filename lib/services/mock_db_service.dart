@@ -4,18 +4,15 @@ import '../models/user.dart';
 import '../models/student.dart';
 import '../models/student_model.dart';
 import '../models/timetable.dart';
-import '../models/booking.dart';
 import '../models/room.dart';
 import '../models/notification.dart';
 import '../models/class_slot_model.dart';
 import '../models/discipline_report_model.dart';
-import 'package:uuid/uuid.dart';
 
 /// In-memory data service for timetables, attendance, bookings,
 /// and discipline reports. Firebase Auth handles user identity;
 /// this service handles all structured app data.
 class MockDatabaseService extends ChangeNotifier {
-  final _uuid = const Uuid();
 
   // ─── Data Tables ────────────────────────────────────────────
   List<AppUser> users = [];
@@ -23,20 +20,9 @@ class MockDatabaseService extends ChangeNotifier {
   List<Student> students = [];
   List<StudentModel> studentModels = [];
   List<Timetable> masterTimetable = [];
-  List<Booking> allBookings = [];
   List<AppNotification> notifications = [];
   List<ClassSlotModel> classSlots = [];
   List<DisciplineReportModel> disciplineReports = [];
-
-  // ─── Convenience getters ────────────────────────────────────
-  List<Booking> get pendingBookings =>
-      allBookings.where((b) => b.status == BookingStatus.pending).toList();
-
-  List<Booking> get approvedBookings =>
-      allBookings.where((b) => b.status == BookingStatus.approved).toList();
-
-  List<Booking> get rejectedBookings =>
-      allBookings.where((b) => b.status == BookingStatus.rejected).toList();
 
   MockDatabaseService() {
     _seedData();
@@ -214,14 +200,6 @@ class MockDatabaseService extends ChangeNotifier {
         }
       }
     }
-    for (var b in approvedBookings) {
-      if (b.date.year == date.year && b.date.month == date.month && b.date.day == date.day) {
-        if (startMin < b.endMinutes && endMin > b.startMinutes) {
-          occupiedRoomNames.add(b.room);
-        }
-      }
-    }
-
     return rooms.where((r) => !occupiedRoomNames.contains(r.name)).toList();
   }
 
@@ -234,12 +212,16 @@ class MockDatabaseService extends ChangeNotifier {
         if (startMin < t.endMinutes && endMin > t.startMinutes) return true;
       }
     }
-    for (var b in approvedBookings) {
-      if (b.date.year == date.year && b.date.month == date.month &&
-          b.date.day == date.day && b.room == roomName) {
-        if (startMin < b.endMinutes && endMin > b.startMinutes) return true;
+    
+    for (var s in classSlots) {
+      if (s.date.year == date.year && s.date.month == date.month &&
+          s.date.day == date.day && s.roomId == roomName) {
+        final sStartMin = s.startTime.hour * 60 + s.startTime.minute;
+        final sEndMin = s.endTime.hour * 60 + s.endTime.minute;
+        if (startMin < sEndMin && endMin > sStartMin) return true;
       }
     }
+    
     return false;
   }
 
@@ -280,12 +262,6 @@ class MockDatabaseService extends ChangeNotifier {
     for (var t in masterTimetable) {
       if (t.dayOfWeek == date.weekday && t.lecturerId == lecturerId) {
         dailySlots.add(t);
-      }
-    }
-    for (var b in approvedBookings) {
-      if (b.date.year == date.year && b.date.month == date.month &&
-          b.date.day == date.day && b.lecturerId == lecturerId) {
-        dailySlots.add(b.toTimetable());
       }
     }
     return dailySlots;
@@ -336,77 +312,9 @@ class MockDatabaseService extends ChangeNotifier {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  BOOKING MODULE (Module 6)
+  //  BOOKING MODULE (Module 6) — Now handled by Firestore.
+  //  See: services/booking_service.dart (FirestoreBookingService)
   // ═══════════════════════════════════════════════════════════
-
-  List<Booking> getBookingsForLecturer(String lecturerId) {
-    return allBookings.where((b) => b.lecturerId == lecturerId).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-  }
-
-  Future<Booking> submitBookingRequest(Booking booking) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    final newBooking = booking.copyWith(id: _uuid.v4(), createdAt: DateTime.now());
-    allBookings.add(newBooking);
-    if (newBooking.status == BookingStatus.pending) {
-      _createNotification(
-        recipientId: 'u3',
-        title: 'New Booking Request',
-        message: '${getLecturerName(newBooking.lecturerId)} requested ${newBooking.room} on ${_formatDate(newBooking.date)}',
-        type: NotificationType.bookingSubmitted,
-        bookingId: newBooking.id,
-      );
-    }
-    notifyListeners();
-    return newBooking;
-  }
-
-  Future<void> approveBooking(String bookingId, String adminId) async {
-    await Future.delayed(const Duration(milliseconds: 200));
-    final index = allBookings.indexWhere((b) => b.id == bookingId);
-    if (index == -1) throw Exception('Booking not found');
-    final booking = allBookings[index];
-    if (booking.status != BookingStatus.pending) {
-      throw Exception('Only pending bookings can be approved');
-    }
-    allBookings[index] = booking.copyWith(
-      status: BookingStatus.approved,
-      reviewedBy: adminId,
-      reviewedAt: DateTime.now(),
-    );
-    _createNotification(
-      recipientId: booking.lecturerId,
-      title: 'Booking Approved ✅',
-      message: 'Your booking for ${booking.room} on ${_formatDate(booking.date)} has been approved.',
-      type: NotificationType.bookingApproved,
-      bookingId: bookingId,
-    );
-    notifyListeners();
-  }
-
-  Future<void> rejectBooking(String bookingId, String adminId, {String? reason}) async {
-    await Future.delayed(const Duration(milliseconds: 200));
-    final index = allBookings.indexWhere((b) => b.id == bookingId);
-    if (index == -1) throw Exception('Booking not found');
-    final booking = allBookings[index];
-    if (booking.status != BookingStatus.pending) {
-      throw Exception('Only pending bookings can be rejected');
-    }
-    allBookings[index] = booking.copyWith(
-      status: BookingStatus.rejected,
-      reviewedBy: adminId,
-      reviewedAt: DateTime.now(),
-      rejectionReason: reason,
-    );
-    _createNotification(
-      recipientId: booking.lecturerId,
-      title: 'Booking Rejected ❌',
-      message: 'Your booking for ${booking.room} on ${_formatDate(booking.date)} was rejected.${reason != null ? ' Reason: $reason' : ''}',
-      type: NotificationType.bookingRejected,
-      bookingId: bookingId,
-    );
-    notifyListeners();
-  }
 
   // ═══════════════════════════════════════════════════════════
   //  NOTIFICATIONS
@@ -428,28 +336,8 @@ class MockDatabaseService extends ChangeNotifier {
       notifyListeners();
     }
   }
-
-  void _createNotification({
-    required String recipientId,
-    required String title,
-    required String message,
-    required NotificationType type,
-    String? bookingId,
-  }) {
-    notifications.add(AppNotification(
-      id: _uuid.v4(),
-      recipientId: recipientId,
-      title: title,
-      message: message,
-      type: type,
-      createdAt: DateTime.now(),
-      relatedBookingId: bookingId,
-    ));
-  }
-
-  String _formatDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
+
 
 final mockDbProvider = ChangeNotifierProvider<MockDatabaseService>((ref) {
   return MockDatabaseService();
