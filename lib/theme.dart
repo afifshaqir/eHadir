@@ -6,38 +6,38 @@ class EHadirTheme {
   EHadirTheme._();
 
   // ─── Brand colours ────────────────────────────────────────
-  static const Color primary      = Color(0xFF3F51B5); // Indigo
-  static const Color primaryDark  = Color(0xFF1A237E); // Deep Indigo
-  static const Color accent       = Color(0xFF00BFA5); // Teal accent
-  static const Color surface      = Color(0xFF121228); // Dark surface
-  static const Color surfaceLight = Color(0xFF1E1E3F); // Elevated surface
-  static const Color card         = Color(0xFF252547); // Card surface
-  static const Color cardHover    = Color(0xFF2D2D55);
-  static const Color background   = Color(0xFF0D0D1F); // Deepest background
-  static const Color textPrimary  = Color(0xFFF0F0FF);
-  static const Color textSecondary= Color(0xFF9E9EBF);
-  static const Color divider      = Color(0xFF2A2A4A);
+  static const Color primary      = Color(0xFF4F46E5); // Indigo
+  static const Color primaryDark  = Color(0xFF3730A3); // Deep Indigo
+  static const Color accent       = Color(0xFF3B82F6); // Royal Blue accent
+  static const Color surface      = Color(0xFFFFFFFF); // White surface
+  static const Color surfaceLight = Color(0xFFF3F4F6); // Soft gray surface
+  static const Color card         = Color(0xFFFFFFFF); // White card surface
+  static const Color cardHover    = Color(0xFFFAFAFC);
+  static const Color background   = Color(0xFFF5F7FB); // Welcoming off-white background
+  static const Color textPrimary  = Color(0xFF1F2937); // Dark charcoal text
+  static const Color textSecondary= Color(0xFF6B7280); // Slate gray details
+  static const Color divider      = Color(0xFFE5E7EB); // Light gray borders
 
   // ─── Status colours ───────────────────────────────────────
-  static const Color pending  = Color(0xFFFFA726); // Amber
-  static const Color approved = Color(0xFF66BB6A); // Emerald
-  static const Color rejected = Color(0xFFEF5350); // Rose
+  static const Color pending  = Color(0xFFF59E0B); // Amber
+  static const Color approved = Color(0xFF10B981); // Emerald
+  static const Color rejected = Color(0xFFEF4444); // Coral Red
 
   // ─── Gradient ─────────────────────────────────────────────
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFF3F51B5), Color(0xFF00BFA5)],
+    colors: [Color(0xFF4F46E5), Color(0xFF3B82F6)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient headerGradient = LinearGradient(
-    colors: [Color(0xFF1A237E), Color(0xFF283593), Color(0xFF3F51B5)],
+    colors: [Color(0xFFFFFFFF), Color(0xFFF9FAFB)],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
 
   static const LinearGradient cardGradient = LinearGradient(
-    colors: [Color(0xFF252547), Color(0xFF1E1E3F)],
+    colors: [Color(0xFFFFFFFF), Color(0xFFFAFAFC)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -51,15 +51,15 @@ class EHadirTheme {
   // ─── Shadows ──────────────────────────────────────────────
   static List<BoxShadow> get cardShadow => [
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.3),
-      blurRadius: 12,
-      offset: const Offset(0, 4),
+      color: Colors.black.withValues(alpha: 0.04),
+      blurRadius: 30,
+      offset: const Offset(0, 8),
     ),
   ];
 
   static List<BoxShadow> get glowShadow => [
     BoxShadow(
-      color: accent.withValues(alpha: 0.25),
+      color: primary.withValues(alpha: 0.15),
       blurRadius: 20,
       offset: const Offset(0, 4),
     ),
@@ -98,12 +98,12 @@ class EHadirTheme {
   //  THEME DATA
   // ═══════════════════════════════════════════════════════════
 
-  static ThemeData get darkTheme {
-    final base = ThemeData.dark(useMaterial3: true);
+  static ThemeData get lightTheme {
+    final base = ThemeData.light(useMaterial3: true);
 
     return base.copyWith(
       scaffoldBackgroundColor: background,
-      colorScheme: ColorScheme.dark(
+      colorScheme: ColorScheme.light(
         primary: primary,
         secondary: accent,
         surface: surface,
@@ -114,12 +114,16 @@ class EHadirTheme {
         outline: divider,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: surface,
+        backgroundColor: Colors.white,
         foregroundColor: textPrimary,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: true,
+        shape: Border(
+          bottom: BorderSide(color: divider, width: 1),
+        ),
         titleTextStyle: GoogleFonts.outfit(
-          fontSize: 20,
+          fontSize: 18,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
@@ -128,7 +132,8 @@ class EHadirTheme {
         color: card,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusMd),
+          borderRadius: BorderRadius.circular(radiusLg),
+          side: BorderSide(color: divider, width: 1),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
@@ -149,8 +154,8 @@ class EHadirTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: accent,
-          side: const BorderSide(color: accent, width: 1.5),
+          foregroundColor: primary,
+          side: const BorderSide(color: primary, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusMd),
@@ -163,7 +168,7 @@ class EHadirTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: accent,
+          foregroundColor: primary,
           textStyle: GoogleFonts.outfit(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -172,22 +177,34 @@ class EHadirTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surfaceLight,
+        fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusMd),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: divider, width: 1),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          borderSide: BorderSide(color: divider, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusMd),
-          borderSide: const BorderSide(color: accent, width: 2),
+          borderSide: const BorderSide(color: primary, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          borderSide: const BorderSide(color: rejected, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          borderSide: const BorderSide(color: rejected, width: 2),
         ),
         labelStyle: GoogleFonts.outfit(color: textSecondary, fontSize: 14),
         hintStyle: GoogleFonts.outfit(color: textSecondary.withValues(alpha: 0.6), fontSize: 14),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: surfaceLight,
-        selectedColor: primary.withValues(alpha: 0.3),
+        selectedColor: primary.withValues(alpha: 0.15),
         labelStyle: GoogleFonts.outfit(color: textPrimary, fontSize: 13),
         side: BorderSide(color: divider),
         shape: RoundedRectangleBorder(
@@ -195,7 +212,7 @@ class EHadirTheme {
         ),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: accent,
+        backgroundColor: primary,
         foregroundColor: Colors.white,
         elevation: 4,
         shape: RoundedRectangleBorder(
@@ -203,8 +220,8 @@ class EHadirTheme {
         ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: surface,
-        selectedItemColor: accent,
+        backgroundColor: Colors.white,
+        selectedItemColor: primary,
         unselectedItemColor: textSecondary,
         type: BottomNavigationBarType.fixed,
         elevation: 8,
@@ -217,17 +234,22 @@ class EHadirTheme {
         displayColor: textPrimary,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: surfaceLight,
+        backgroundColor: Colors.white,
         contentTextStyle: GoogleFonts.outfit(color: textPrimary, fontSize: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusMd)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          side: BorderSide(color: divider),
+        ),
         behavior: SnackBarBehavior.floating,
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: card,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusLg)),
         titleTextStyle: GoogleFonts.outfit(color: textPrimary, fontSize: 20, fontWeight: FontWeight.w600),
         contentTextStyle: GoogleFonts.outfit(color: textSecondary, fontSize: 15),
       ),
     );
   }
+
+  static ThemeData get darkTheme => lightTheme;
 }

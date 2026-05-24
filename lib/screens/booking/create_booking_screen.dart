@@ -178,14 +178,7 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Tempah Bilik Ganti'),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(gradient: EHadirTheme.primaryGradient),
-        ),
+        title: const Text('Tempah Bilik'),
       ),
       body: FadeTransition(
         opacity: _fadeIn,
@@ -882,9 +875,8 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 60)),
       builder: (ctx, child) => Theme(
-        data: EHadirTheme.darkTheme.copyWith(
-          colorScheme: EHadirTheme.darkTheme.colorScheme
-              .copyWith(primary: EHadirTheme.accent),
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(primary: EHadirTheme.primary),
         ),
         child: child!,
       ),
@@ -899,9 +891,8 @@ class _CreateBookingScreenState extends ConsumerState<CreateBookingScreen>
       context: context,
       initialTime: isStart ? _startTime : _endTime,
       builder: (ctx, child) => Theme(
-        data: EHadirTheme.darkTheme.copyWith(
-          colorScheme: EHadirTheme.darkTheme.colorScheme
-              .copyWith(primary: EHadirTheme.accent),
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(primary: EHadirTheme.primary),
         ),
         child: child!,
       ),

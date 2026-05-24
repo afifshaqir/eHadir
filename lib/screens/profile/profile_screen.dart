@@ -20,9 +20,6 @@ class ProfileScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profil Saya'),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(gradient: EHadirTheme.primaryGradient),
-        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),

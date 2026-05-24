@@ -69,6 +69,54 @@ class AppShellState extends ConsumerState<AppShell> {
     ];
   }
 
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final isSelected = _currentIndex == index;
+    return GestureDetector(
+      onTap: () => navigateToTab(index),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? EHadirTheme.primary.withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? EHadirTheme.primary : EHadirTheme.textSecondary,
+              size: 22,
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              child: isSelected
+                  ? Row(
+                      children: [
+                        const SizedBox(width: 8),
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: EHadirTheme.primary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screens = _buildScreens();
@@ -77,20 +125,33 @@ class AppShellState extends ConsumerState<AppShell> {
         index: _currentIndex,
         children: screens,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: navigateToTab,
-        selectedItemColor: EHadirTheme.accent,
-        unselectedItemColor: EHadirTheme.textSecondary,
-        backgroundColor: EHadirTheme.surface,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Utama'),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_month_rounded), label: 'Jadual'),
-          BottomNavigationBarItem(icon: Icon(Icons.fact_check_rounded), label: 'Kehadiran'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Laporan'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profil'),
-        ],
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+            border: Border.all(color: EHadirTheme.divider),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, Icons.home_rounded, 'Utama'),
+              _buildNavItem(1, Icons.calendar_month_rounded, 'Jadual'),
+              _buildNavItem(2, Icons.fact_check_rounded, 'Kehadiran'),
+              _buildNavItem(3, Icons.bar_chart_rounded, 'Laporan'),
+              _buildNavItem(4, Icons.person_rounded, 'Profil'),
+            ],
+          ),
+        ),
       ),
     );
   }

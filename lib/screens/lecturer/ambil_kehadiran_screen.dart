@@ -63,9 +63,6 @@ class _AmbilKehadiranScreenState extends ConsumerState<AmbilKehadiranScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ambil Kehadiran'),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(gradient: EHadirTheme.primaryGradient),
-        ),
       ),
       body: Column(
         children: [

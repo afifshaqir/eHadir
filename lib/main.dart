@@ -35,7 +35,7 @@ class EHadirApp extends StatelessWidget {
     return MaterialApp(
       title: 'eHadir — IKM Johor Bahru',
       debugShowCheckedModeBanner: false,
-      theme: EHadirTheme.darkTheme,
+      theme: EHadirTheme.lightTheme,
       home: const AuthWrapper(),
     );
   }

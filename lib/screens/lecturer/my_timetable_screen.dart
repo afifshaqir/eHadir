@@ -27,14 +27,9 @@ class MyTimetableScreen extends ConsumerWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            title: const Text('Jadual Saya'),
+          const SliverAppBar(
+            title: Text('Jadual Saya'),
             floating: true,
-            flexibleSpace: Container(
-              decoration: BoxDecoration(
-                gradient: EHadirTheme.primaryGradient,
-              ),
-            ),
           ),
           // Stream directly from Firestore — live updates on every change
           SliverToBoxAdapter(
@@ -59,12 +54,9 @@ class MyTimetableScreen extends ConsumerWidget {
                         children: [
                           const Icon(Icons.error_outline_rounded,
                               size: 48, color: EHadirTheme.rejected),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Ralat memuatkan jadual.\n${snapshot.error}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: EHadirTheme.textSecondary),
-                          ),
+                          const SizedBox(height: 16),
+                          Text('Ralat memuatkan jadual.',
+                              style: const TextStyle(color: EHadirTheme.textSecondary)),
                         ],
                       ),
                     ),
@@ -75,16 +67,16 @@ class MyTimetableScreen extends ConsumerWidget {
 
                 // Empty state
                 if (slots.isEmpty) {
-                  return const SizedBox(
+                  return SizedBox(
                     height: 300,
                     child: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.event_busy_rounded,
-                              size: 64, color: Color(0x4DFFFFFF)),
-                          SizedBox(height: 16),
-                          Text('Tiada jadual ditemui.',
+                              size: 64, color: EHadirTheme.textSecondary.withValues(alpha: 0.3)),
+                          const SizedBox(height: 16),
+                          const Text('Tiada jadual ditemui.',
                               style: TextStyle(color: EHadirTheme.textSecondary)),
                         ],
                       ),
@@ -93,15 +85,20 @@ class MyTimetableScreen extends ConsumerWidget {
                 }
 
                 // Slot list
-                return Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: slots
-                        .map((slot) => _TimetableCard(
-                              slot: slot,
-                              onTakeAttendance: onTakeAttendance,
-                            ))
-                        .toList(),
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: slots
+                            .map((slot) => _TimetableCard(
+                                  slot: slot,
+                                  onTakeAttendance: onTakeAttendance,
+                                ))
+                            .toList(),
+                      ),
+                    ),
                   ),
                 );
               },
@@ -122,11 +119,12 @@ class _TimetableCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: EHadirTheme.card,
-        borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+        borderRadius: BorderRadius.circular(EHadirTheme.radiusLg),
         border: Border.all(color: EHadirTheme.divider),
+        boxShadow: EHadirTheme.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,25 +134,26 @@ class _TimetableCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Date box
+                // Date box (Indigo pill badge)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: EHadirTheme.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
+                    color: EHadirTheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
                     children: [
                       Text(DateFormat('MMM').format(slot.date).toUpperCase(),
                           style: const TextStyle(
-                              color: EHadirTheme.accent,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700)),
+                              color: EHadirTheme.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5)),
                       Text(DateFormat('dd').format(slot.date),
                           style: const TextStyle(
-                              color: EHadirTheme.accent,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800)),
+                              color: EHadirTheme.primary,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900)),
                     ],
                   ),
                 ),
@@ -173,32 +172,35 @@ class _TimetableCard extends StatelessWidget {
                       Row(
                         children: [
                           const Icon(Icons.room_rounded,
-                              size: 14, color: EHadirTheme.textSecondary),
+                              size: 16, color: Color(0xFFF59E0B)), // Orange location pin
                           const SizedBox(width: 4),
                           Text(slot.roomId,
                               style: const TextStyle(
                                   color: EHadirTheme.textSecondary,
-                                  fontSize: 13)),
-                          const SizedBox(width: 12),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500)),
+                          const SizedBox(width: 14),
                           const Icon(Icons.schedule_rounded,
-                              size: 14, color: EHadirTheme.textSecondary),
+                              size: 16, color: Color(0xFF3B82F6)), // Blue clock
                           const SizedBox(width: 4),
                           Text(slot.timeRangeFormatted,
                               style: const TextStyle(
                                   color: EHadirTheme.textSecondary,
-                                  fontSize: 13)),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500)),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Row(
                         children: [
-                          const Icon(Icons.people_alt_rounded,
-                              size: 14, color: EHadirTheme.textSecondary),
+                          const Icon(Icons.school_rounded,
+                              size: 16, color: Color(0xFF10B981)), // Emerald book/program
                           const SizedBox(width: 4),
                           Text('Program: ${slot.program}',
                               style: const TextStyle(
                                   color: EHadirTheme.textSecondary,
-                                  fontSize: 13)),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500)),
                         ],
                       ),
                     ],
@@ -209,25 +211,34 @@ class _TimetableCard extends StatelessWidget {
           ),
           // Action row
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: const BoxDecoration(
-              color: EHadirTheme.surfaceLight,
+              color: Color(0xFFFAFAFC),
               borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(EHadirTheme.radiusMd),
-                  bottomRight: Radius.circular(EHadirTheme.radiusMd)),
+                  bottomLeft: Radius.circular(EHadirTheme.radiusLg),
+                  bottomRight: Radius.circular(EHadirTheme.radiusLg)),
+              border: Border(top: BorderSide(color: EHadirTheme.divider)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton.icon(
+                ElevatedButton.icon(
                   onPressed: () {
                     onTakeAttendance(slot.id);
                   },
-                  icon: const Icon(Icons.fact_check_rounded, size: 18),
+                  icon: const Icon(Icons.fact_check_rounded, size: 16, color: Colors.white),
                   label: const Text('Ambil Kehadiran'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: EHadirTheme.accent,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: EHadirTheme.approved, // Emerald Green
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],

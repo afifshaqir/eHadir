@@ -364,8 +364,8 @@ class _KetuaProgramDashboardScreenState
                 firstDate: DateTime.now(),
                 lastDate: DateTime.now().add(const Duration(days: 180)),
                 builder: (ctx, child) => Theme(
-                  data: EHadirTheme.darkTheme.copyWith(
-                    colorScheme: EHadirTheme.darkTheme.colorScheme.copyWith(primary: EHadirTheme.accent),
+                  data: Theme.of(context).copyWith(
+                    colorScheme: Theme.of(context).colorScheme.copyWith(primary: EHadirTheme.primary),
                   ),
                   child: child!,
                 ),

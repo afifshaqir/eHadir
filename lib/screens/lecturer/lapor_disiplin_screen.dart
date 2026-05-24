@@ -88,9 +88,6 @@ class _LaporDisiplinScreenState extends ConsumerState<LaporDisiplinScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lapor Disiplin'),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(gradient: EHadirTheme.primaryGradient),
-        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -212,7 +209,7 @@ class _LaporDisiplinScreenState extends ConsumerState<LaporDisiplinScreen> {
                       : const Icon(Icons.send_rounded),
                   label: Text(_isSubmitting ? 'Menghantar...' : 'Hantar Laporan'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD32F2F), // Red for discipline report
+                    backgroundColor: EHadirTheme.rejected,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
