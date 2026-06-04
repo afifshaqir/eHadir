@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/auth_service.dart';
+import '../../models/department.dart';
 import '../../models/user.dart';
 import '../../theme.dart';
 
@@ -23,6 +24,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   UserRole _selectedRole = UserRole.pensyarah;
   String _selectedProgram = kPrograms.first;
+  String _selectedDepartment = Department.all.first;
 
   @override
   void dispose() {
@@ -38,14 +40,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() => _isLoading = true);
 
     final auth = ref.read(authProvider);
+    String programOrDept;
+    if (_selectedRole == UserRole.admin ||
+        _selectedRole == UserRole.timbalanPengarahAkademik) {
+      programOrDept = 'Global';
+    } else if (_selectedRole == UserRole.ketuaJabatan) {
+      programOrDept = _selectedDepartment;
+    } else {
+      programOrDept = _selectedProgram;
+    }
     final error = await auth.register(
       name: _nameCtrl.text,
       email: _emailCtrl.text,
       password: _passwordCtrl.text,
       role: _selectedRole,
-      program: (_selectedRole == UserRole.admin || _selectedRole == UserRole.timbalanPengarahAkademik)
-          ? 'Global'
-          : _selectedProgram,
+      program: programOrDept,
     );
 
     if (!mounted) return;
@@ -270,8 +279,39 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
                 const SizedBox(height: 18),
 
-                // ── Program ─────────────────────────────────
-                if (_selectedRole != UserRole.admin && _selectedRole != UserRole.timbalanPengarahAkademik) ...[
+                // ── Program / Department ────────────────────
+                if (_selectedRole == UserRole.ketuaJabatan) ...[
+                  _fieldLabel('Jabatan'),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: EHadirTheme.surfaceLight,
+                      borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedDepartment,
+                        isExpanded: true,
+                        dropdownColor: EHadirTheme.card,
+                        style: const TextStyle(
+                            color: EHadirTheme.textPrimary, fontSize: 15),
+                        icon: const Icon(Icons.expand_more_rounded,
+                            color: EHadirTheme.textSecondary),
+                        items: Department.all
+                            .map((d) => DropdownMenuItem(
+                                  value: d,
+                                  child: Text(d),
+                                ))
+                            .toList(),
+                        onChanged: (v) => setState(() =>
+                            _selectedDepartment = v ?? _selectedDepartment),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                ] else if (_selectedRole != UserRole.admin &&
+                    _selectedRole != UserRole.timbalanPengarahAkademik) ...[
                   _fieldLabel('Program'),
                   const SizedBox(height: 8),
                   Container(

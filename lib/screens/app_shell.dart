@@ -13,7 +13,7 @@ import 'dashboard/pensyarah_dashboard_screen.dart';
 // Import modules
 import 'lecturer/ambil_kehadiran_screen.dart';
 import 'lecturer/lapor_disiplin_screen.dart';
-import 'lecturer/my_timetable_screen.dart';
+import 'lecturer/weekly_timetable_screen.dart';
 import 'profile/profile_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
@@ -64,7 +64,7 @@ class AppShellState extends ConsumerState<AppShell> {
 
     return [
       utama,
-      MyTimetableScreen(onTakeAttendance: navigateToAttendanceTab), // Jadual
+      const WeeklyTimetableScreen(), // Jadual — fed by TimetableEntry rows built by Ketua Jabatan
       AmbilKehadiranScreen(
         key: ValueKey(_attendanceSlotId ?? 'attendance-tab'),
         initialSlotId: _attendanceSlotId,

@@ -9,6 +9,7 @@ import '../../models/user.dart';
 import '../../models/class_slot_model.dart';
 import '../../theme.dart';
 import '../../utils/dialogs.dart';
+import '../ketua_program/tugaskan_subjek_screen.dart';
 
 class KetuaProgramDashboardScreen extends ConsumerStatefulWidget {
   const KetuaProgramDashboardScreen({super.key});
@@ -171,6 +172,8 @@ class _KetuaProgramDashboardScreenState
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
           children: [
             _buildPageHeader(),
+            const SizedBox(height: 16),
+            _buildTugaskanSubjekCard(),
             const SizedBox(height: 24),
             _buildProgressIndicator(),
             const SizedBox(height: 24),
@@ -178,6 +181,58 @@ class _KetuaProgramDashboardScreenState
               duration: const Duration(milliseconds: 300),
               child: _buildCurrentStep(),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTugaskanSubjekCard() {
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const TugaskanSubjekScreen()),
+      ),
+      borderRadius: BorderRadius.circular(EHadirTheme.radiusLg),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: EHadirTheme.card,
+          borderRadius: BorderRadius.circular(EHadirTheme.radiusLg),
+          border: Border.all(
+              color: EHadirTheme.approved.withValues(alpha: 0.4), width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: EHadirTheme.approved.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+              ),
+              child: const Icon(Icons.assignment_ind_rounded,
+                  color: EHadirTheme.approved, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Tugaskan Subjek',
+                      style: TextStyle(
+                          color: EHadirTheme.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800)),
+                  SizedBox(height: 2),
+                  Text(
+                      'Tetapkan subjek yang akan diajar oleh setiap pensyarah',
+                      style: TextStyle(
+                          color: EHadirTheme.textSecondary, fontSize: 12)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: EHadirTheme.textSecondary),
           ],
         ),
       ),

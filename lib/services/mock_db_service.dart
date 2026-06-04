@@ -8,6 +8,7 @@ import '../models/room.dart';
 import '../models/notification.dart';
 import '../models/class_slot_model.dart';
 import '../models/discipline_report_model.dart';
+import 'seed_data.dart';
 
 /// In-memory data service for timetables, attendance, bookings,
 /// and discipline reports. Firebase Auth handles user identity;
@@ -55,6 +56,11 @@ class MockDatabaseService extends ChangeNotifier {
       AppUser(id: 'u7', name: 'Prof. Irfan', email: 'irfan@graduate.utm.my',
           role: UserRole.pensyarah, program: 'DGS — Diploma Teknologi Kejuruteraan Gas'),
     ]);
+
+    // Real DED roster from the JAN-JUN 2026 senarai
+    users.addAll(SeedData.dedLecturers);
+    users.add(SeedData.dedKetuaProgram);
+    users.add(SeedData.kjElektrik);
   }
 
   void _seedRooms() {

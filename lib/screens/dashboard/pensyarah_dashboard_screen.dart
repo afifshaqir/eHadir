@@ -5,6 +5,7 @@ import '../../theme.dart';
 import '../app_shell.dart';
 import '../booking/create_booking_screen.dart';
 import '../lecturer/ambil_kehadiran_screen.dart';
+import '../lecturer/weekly_timetable_screen.dart';
 import '../../utils/dialogs.dart';
 
 /// Pensyarah (Lecturer) Dashboard — the "shell" for teammates.
@@ -96,13 +97,18 @@ class PensyarahDashboardScreen extends ConsumerWidget {
                   mainAxisSpacing: 16,
                   childAspectRatio: 0.95,
                   children: [
-                    // ── Module 5: My Timetable (Placeholder) ──
+                    // ═══ MODULE 5: WEEKLY TIMETABLE (ACTIVE) ═══
                     _MenuCard(
                       title: 'Jadual Saya',
                       subtitle: 'Module 5',
                       icon: Icons.calendar_month_rounded,
                       color: EHadirTheme.primary,
-                      onTap: () => _showPlaceholder(context, 5),
+                      isHighlighted: true,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const WeeklyTimetableScreen()),
+                      ),
                     ),
 
                     // ═══ MODULE 1: AMBIL KEHADIRAN (ACTIVE) ═══

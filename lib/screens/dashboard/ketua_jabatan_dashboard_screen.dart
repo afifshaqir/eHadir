@@ -6,6 +6,7 @@ import '../../services/mock_db_service.dart';
 import '../../models/discipline_report_model.dart';
 import '../../theme.dart';
 import '../../utils/dialogs.dart';
+import '../ketua_jabatan/bina_jadual_screen.dart';
 
 class KetuaJabatanDashboardScreen extends ConsumerWidget {
   const KetuaJabatanDashboardScreen({super.key});
@@ -78,6 +79,63 @@ class KetuaJabatanDashboardScreen extends ConsumerWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+
+          // Bina Jadual entry
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BinaJadualScreen()),
+              ),
+              borderRadius: BorderRadius.circular(EHadirTheme.radiusLg),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: EHadirTheme.card,
+                  borderRadius: BorderRadius.circular(EHadirTheme.radiusLg),
+                  border: Border.all(
+                      color: EHadirTheme.primary.withValues(alpha: 0.4),
+                      width: 1.5),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: EHadirTheme.primary.withValues(alpha: 0.12),
+                        borderRadius:
+                            BorderRadius.circular(EHadirTheme.radiusMd),
+                      ),
+                      child: const Icon(Icons.calendar_view_week_rounded,
+                          color: EHadirTheme.primary, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Bina Jadual Mingguan',
+                              style: TextStyle(
+                                  color: EHadirTheme.textPrimary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800)),
+                          SizedBox(height: 2),
+                          Text(
+                              'Susun hari, slot masa, dan bilik bagi setiap tugasan pensyarah',
+                              style: TextStyle(
+                                  color: EHadirTheme.textSecondary,
+                                  fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded,
+                        color: EHadirTheme.textSecondary),
+                  ],
+                ),
+              ),
             ),
           ),
 
