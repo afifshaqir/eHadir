@@ -71,12 +71,13 @@ extension SchoolDayX on SchoolDay {
 
 /// A single placed entry on the weekly timetable produced by Ketua Jabatan.
 ///
-/// One entry covers a contiguous run of periods (e.g. periods 2–4 = three
-/// hours). Multi-period sessions are stored as one document with
-/// [startPeriod] and [endPeriod] inclusive.
+/// Stores the *specific date* + start/end TimeOfDay (so KJ can schedule
+/// real one-off sessions like "Monday 15 Jun 2026, 08:00–10:00"). The
+/// recurring weekly grid (Mon–Fri × periods 1–9) is derived from those
+/// fields on demand via [day], [startPeriod], [endPeriod].
 class TimetableEntry {
   final String id;
-  final String assignmentId;  // FK → LecturerAssignment.id
+  final String assignmentId;
   final String subjectCode;
   final String subjectName;
   final String lecturerId;
@@ -84,10 +85,10 @@ class TimetableEntry {
   final String program;
   final String studentClass;
   final String room;
-  final SchoolDay day;
-  final int startPeriod;      // 1..9
-  final int endPeriod;        // 1..9 inclusive
-  final String assignedBy;    // Ketua Jabatan uid
+  final DateTime date;
+  final TimeOfDay startTime;
+  final TimeOfDay endTime;
+  final String assignedBy;
   final DateTime? createdAt;
 
   const TimetableEntry({
@@ -100,20 +101,56 @@ class TimetableEntry {
     required this.program,
     required this.studentClass,
     required this.room,
-    required this.day,
-    required this.startPeriod,
-    required this.endPeriod,
+    required this.date,
+    required this.startTime,
+    required this.endTime,
     required this.assignedBy,
     this.createdAt,
   });
 
-  /// Whether this entry occupies [period] (1..9).
-  bool covers(int period) => period >= startPeriod && period <= endPeriod;
+  /// Derived: day-of-week for the weekly grid.
+  SchoolDay get day => SchoolDayX.fromInt(date.weekday);
 
+  /// Derived: which period (1..9) does [startTime] fall in.
+  /// Period N covers `[N+7 : 00 .. N+8 : 00)`. Times before 08:00 clamp
+  /// to period 1; times at/after 17:00 clamp to period 9.
+  int get startPeriod => _periodFor(startTime);
+  int get endPeriod {
+    // Map the END of the slot back to the *last* covered period.
+    final endMin = endTime.hour * 60 + endTime.minute;
+    if (endMin <= 480) return 1;        // 08:00
+    if (endMin >= 17 * 60) return 9;    // 17:00
+    // 09:00 → period 1 (ends at 09:00), 10:00 → period 2, etc.
+    final p = ((endMin - 480 - 1) ~/ 60) + 1;
+    return p.clamp(1, 9);
+  }
+
+  bool covers(int period) => period >= startPeriod && period <= endPeriod;
   int get spanPeriods => endPeriod - startPeriod + 1;
+
+  int get startMinutes => startTime.hour * 60 + startTime.minute;
+  int get endMinutes => endTime.hour * 60 + endTime.minute;
+
+  static int _periodFor(TimeOfDay t) {
+    final m = t.hour * 60 + t.minute;
+    if (m < 480) return 1;
+    if (m >= 17 * 60) return 9;
+    return ((m - 480) ~/ 60) + 1;
+  }
 
   factory TimetableEntry.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
+    // Backwards-compat: read legacy `day` + period fields if present.
+    final dateField = d['date'];
+    final DateTime date = dateField is Timestamp
+        ? dateField.toDate()
+        : DateTime.now();
+    final startMin = ((d['startMinutes'] as num?) ??
+            (((d['startPeriod'] as num?) ?? 1).toInt() * 60 + 7 * 60))
+        .toInt();
+    final endMin = ((d['endMinutes'] as num?) ??
+            (((d['endPeriod'] as num?) ?? 1).toInt() * 60 + 8 * 60))
+        .toInt();
     return TimetableEntry(
       id: doc.id,
       assignmentId: d['assignmentId'] ?? '',
@@ -124,9 +161,9 @@ class TimetableEntry {
       program: d['program'] ?? '',
       studentClass: d['studentClass'] ?? '',
       room: d['room'] ?? '',
-      day: SchoolDayX.fromInt(((d['day'] as num?) ?? 1).toInt()),
-      startPeriod: ((d['startPeriod'] as num?) ?? 1).toInt(),
-      endPeriod: ((d['endPeriod'] as num?) ?? 1).toInt(),
+      date: date,
+      startTime: TimeOfDay(hour: startMin ~/ 60, minute: startMin % 60),
+      endTime: TimeOfDay(hour: endMin ~/ 60, minute: endMin % 60),
       assignedBy: d['assignedBy'] ?? '',
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
     );
@@ -141,6 +178,11 @@ class TimetableEntry {
         'program': program,
         'studentClass': studentClass,
         'room': room,
+        // Normalise to midnight so date-equality queries work.
+        'date': Timestamp.fromDate(DateTime(date.year, date.month, date.day)),
+        'startMinutes': startMinutes,
+        'endMinutes': endMinutes,
+        // Derived helpers for legacy readers / dashboards.
         'day': day.weekday,
         'startPeriod': startPeriod,
         'endPeriod': endPeriod,

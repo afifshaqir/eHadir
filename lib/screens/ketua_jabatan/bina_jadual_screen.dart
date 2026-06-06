@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../models/department.dart';
 import '../../models/lecturer_assignment.dart';
 import '../../models/timetable_entry.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../../services/curriculum_service.dart';
+import '../../services/mock_db_service.dart';
 import '../../services/seed_data.dart';
 import '../../theme.dart';
 
@@ -377,10 +379,9 @@ class _SlotPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final startLabel = Period.byIndex(entry.startPeriod).start;
-    final endLabel = Period.byIndex(entry.endPeriod).end;
     String fmt(TimeOfDay t) =>
         '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    final dateStr = DateFormat('EEE, d MMM').format(entry.date);
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
       decoration: BoxDecoration(
@@ -391,13 +392,13 @@ class _SlotPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(entry.day.short,
+          Text(dateStr,
               style: const TextStyle(
                   color: EHadirTheme.primary,
                   fontSize: 11,
                   fontWeight: FontWeight.w800)),
           const SizedBox(width: 6),
-          Text('${fmt(startLabel)}–${fmt(endLabel)}',
+          Text('${fmt(entry.startTime)}–${fmt(entry.endTime)}',
               style: const TextStyle(
                   color: EHadirTheme.textPrimary, fontSize: 11)),
           const SizedBox(width: 6),
@@ -432,17 +433,52 @@ class _PlacementSheet extends ConsumerStatefulWidget {
 }
 
 class _PlacementSheetState extends ConsumerState<_PlacementSheet> {
-  SchoolDay _day = SchoolDay.mon;
-  int _startPeriod = 1;
-  int _endPeriod = 1;
-  final _roomCtrl = TextEditingController();
+  DateTime? _date;
+  TimeOfDay _start = const TimeOfDay(hour: 8, minute: 0);
+  TimeOfDay _end = const TimeOfDay(hour: 10, minute: 0);
+  String? _room;
   bool _saving = false;
   List<TimetableEntry> _conflicts = [];
 
-  @override
-  void dispose() {
-    _roomCtrl.dispose();
-    super.dispose();
+  bool get _canSave =>
+      _date != null && _room != null && _room!.isNotEmpty && !_saving;
+
+  Future<void> _pickDate() async {
+    final dt = await showDatePicker(
+      context: context,
+      initialDate: _date ?? DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context)
+              .colorScheme
+              .copyWith(primary: EHadirTheme.primary),
+        ),
+        child: child!,
+      ),
+    );
+    if (dt != null) setState(() => _date = dt);
+  }
+
+  Future<void> _pickStart() async {
+    final t = await showTimePicker(context: context, initialTime: _start);
+    if (t != null) {
+      setState(() {
+        _start = t;
+        // keep end after start
+        final endMin = _end.hour * 60 + _end.minute;
+        final startMin = t.hour * 60 + t.minute;
+        if (endMin <= startMin) {
+          _end = TimeOfDay(hour: (t.hour + 1).clamp(0, 23), minute: t.minute);
+        }
+      });
+    }
+  }
+
+  Future<void> _pickEnd() async {
+    final t = await showTimePicker(context: context, initialTime: _end);
+    if (t != null) setState(() => _end = t);
   }
 
   Future<void> _save() async {
@@ -461,14 +497,13 @@ class _PlacementSheetState extends ConsumerState<_PlacementSheet> {
       lecturerName: widget.assignment.lecturerName,
       program: widget.assignment.program,
       studentClass: widget.assignment.studentClass,
-      room: _roomCtrl.text.trim(),
-      day: _day,
-      startPeriod: _startPeriod,
-      endPeriod: _endPeriod,
+      room: _room!.trim(),
+      date: _date!,
+      startTime: _start,
+      endTime: _end,
       assignedBy: widget.kj.id,
     );
 
-    // Fetch existing entries in this department for the conflict check.
     final all = await curriculum
         .streamEntriesForDepartment(widget.kj.program)
         .first;
@@ -488,17 +523,21 @@ class _PlacementSheetState extends ConsumerState<_PlacementSheet> {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                '${widget.assignment.subjectCode} disusun ke ${_day.long}.'),
-            backgroundColor: EHadirTheme.approved),
+          content: Text(
+              '${widget.assignment.subjectCode} disusun ke ${DateFormat('d MMM').format(_date!)}.'),
+          backgroundColor: EHadirTheme.approved,
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final db = ref.watch(mockDbProvider);
+    final rooms = db.rooms;
+
     return DraggableScrollableSheet(
-      initialChildSize: 0.85,
+      initialChildSize: 0.9,
       maxChildSize: 0.95,
       minChildSize: 0.5,
       builder: (ctx, controller) => Container(
@@ -534,58 +573,95 @@ class _PlacementSheetState extends ConsumerState<_PlacementSheet> {
             ),
             const SizedBox(height: 20),
 
-            const _SectionLabel('Hari'),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              children: SchoolDay.values
-                  .map((d) => ChoiceChip(
-                        label: Text(d.long),
-                        selected: _day == d,
-                        onSelected: (_) => setState(() => _day = d),
-                      ))
-                  .toList(),
+            // ── 1) DATE ────────────────────────────────────
+            const _SectionLabel('Pilih Tarikh & Masa'),
+            const SizedBox(height: 8),
+            _DateCard(date: _date, onTap: _pickDate),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                    child: _TimeCard(
+                        label: 'Masa Mula',
+                        time: _start,
+                        onTap: _pickStart)),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(Icons.arrow_forward_rounded,
+                      color: EHadirTheme.textSecondary),
+                ),
+                Expanded(
+                    child: _TimeCard(
+                        label: 'Masa Tamat',
+                        time: _end,
+                        onTap: _pickEnd)),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
-            const _SectionLabel('Slot Mula'),
-            const SizedBox(height: 6),
-            _PeriodDropdown(
-              value: _startPeriod,
-              onChanged: (v) => setState(() {
-                _startPeriod = v;
-                if (_endPeriod < v) _endPeriod = v;
-              }),
-            ),
-            const SizedBox(height: 12),
-
-            const _SectionLabel('Slot Tamat'),
-            const SizedBox(height: 6),
-            _PeriodDropdown(
-              value: _endPeriod,
-              min: _startPeriod,
-              onChanged: (v) => setState(() => _endPeriod = v),
-            ),
-            const SizedBox(height: 16),
-
-            const _SectionLabel('Bilik / Lokasi'),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _roomCtrl,
-              decoration: const InputDecoration(
-                hintText: 'Cth: PA BK 1, WIRING BAY 3, Bilik Kuliah A1',
-              ),
-            ),
+            // ── 2) ROOM ────────────────────────────────────
+            const _SectionLabel('Pilih Bilik'),
+            const SizedBox(height: 8),
+            ...rooms.map((r) {
+              final selected = _room == r.name;
+              return GestureDetector(
+                onTap: () => setState(() => _room = r.name),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? EHadirTheme.primary.withValues(alpha: 0.10)
+                        : EHadirTheme.card,
+                    borderRadius:
+                        BorderRadius.circular(EHadirTheme.radiusMd),
+                    border: Border.all(
+                      color: selected
+                          ? EHadirTheme.primary
+                          : EHadirTheme.divider,
+                      width: selected ? 2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(r.name,
+                                style: const TextStyle(
+                                    color: EHadirTheme.textPrimary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${r.building} · ${r.typeLabel} · ${r.capacity} pax',
+                              style: const TextStyle(
+                                  color: EHadirTheme.textSecondary,
+                                  fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (selected)
+                        const Icon(Icons.check_circle_rounded,
+                            color: EHadirTheme.primary, size: 20),
+                    ],
+                  ),
+                ),
+              );
+            }),
 
             if (_conflicts.isNotEmpty) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: EHadirTheme.rejected.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
-                  border:
-                      Border.all(color: EHadirTheme.rejected.withValues(alpha: 0.4)),
+                  border: Border.all(
+                      color: EHadirTheme.rejected.withValues(alpha: 0.4)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -598,7 +674,8 @@ class _PlacementSheetState extends ConsumerState<_PlacementSheet> {
                     ..._conflicts.map((c) => Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
-                            '• ${c.subjectCode} (${c.lecturerName}) — ${c.day.short} slot ${c.startPeriod}-${c.endPeriod}, ${c.room}',
+                            '• ${c.subjectCode} (${c.lecturerName}) — ${DateFormat('d MMM').format(c.date)} '
+                            '${_fmt(c.startTime)}–${_fmt(c.endTime)}, ${c.room}',
                             style: const TextStyle(
                                 color: EHadirTheme.textPrimary, fontSize: 12),
                           ),
@@ -610,7 +687,7 @@ class _PlacementSheetState extends ConsumerState<_PlacementSheet> {
 
             const SizedBox(height: 20),
             ElevatedButton.icon(
-              onPressed: _saving ? null : _save,
+              onPressed: _canSave ? _save : null,
               icon: _saving
                   ? const SizedBox(
                       width: 16,
@@ -625,6 +702,9 @@ class _PlacementSheetState extends ConsumerState<_PlacementSheet> {
       ),
     );
   }
+
+  static String _fmt(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 }
 
 class _SectionLabel extends StatelessWidget {
@@ -633,45 +713,103 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(text,
       style: const TextStyle(
-          color: EHadirTheme.textSecondary,
+          color: EHadirTheme.textPrimary,
           fontWeight: FontWeight.w700,
-          fontSize: 11,
-          letterSpacing: 0.5));
+          fontSize: 15));
 }
 
-class _PeriodDropdown extends StatelessWidget {
-  final int value;
-  final int min;
-  final ValueChanged<int> onChanged;
-  const _PeriodDropdown(
-      {required this.value, required this.onChanged, this.min = 1});
+class _DateCard extends StatelessWidget {
+  final DateTime? date;
+  final VoidCallback onTap;
+  const _DateCard({required this.date, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    String fmt(TimeOfDay t) =>
-        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: EHadirTheme.surfaceLight,
-        borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
-        border: Border.all(color: EHadirTheme.divider),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: EHadirTheme.card,
+          borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+          border: Border.all(color: EHadirTheme.divider),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: EHadirTheme.accent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
+              ),
+              child: const Icon(Icons.calendar_today_rounded,
+                  color: EHadirTheme.accent, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Tarikh',
+                      style: TextStyle(
+                          color: EHadirTheme.textSecondary, fontSize: 11)),
+                  const SizedBox(height: 2),
+                  Text(
+                    date != null
+                        ? DateFormat('EEEE, dd MMMM yyyy').format(date!)
+                        : 'Tekan untuk pilih tarikh',
+                    style: TextStyle(
+                      color: date != null
+                          ? EHadirTheme.textPrimary
+                          : EHadirTheme.textSecondary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int>(
-          value: value,
-          isExpanded: true,
-          items: Period.all
-              .where((p) => p.index >= min)
-              .map((p) => DropdownMenuItem(
-                    value: p.index,
-                    child: Text(
-                        'Slot ${p.index} — ${fmt(p.start)}-${fmt(p.end)}'),
-                  ))
-              .toList(),
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
+    );
+  }
+}
+
+class _TimeCard extends StatelessWidget {
+  final String label;
+  final TimeOfDay time;
+  final VoidCallback onTap;
+  const _TimeCard(
+      {required this.label, required this.time, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+        decoration: BoxDecoration(
+          color: EHadirTheme.card,
+          borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+          border: Border.all(color: EHadirTheme.divider),
+        ),
+        child: Column(
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    color: EHadirTheme.textSecondary, fontSize: 11)),
+            const SizedBox(height: 4),
+            Text(
+              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+              style: const TextStyle(
+                  color: EHadirTheme.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800),
+            ),
+          ],
         ),
       ),
     );
