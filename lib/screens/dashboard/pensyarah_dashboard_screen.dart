@@ -153,15 +153,6 @@ class PensyarahDashboardScreen extends ConsumerWidget {
                       onTap: () => _showPlaceholder(context, 3),
                     ),
 
-                    // ── Module 4: Upload Schedule (Placeholder) ──
-                    _MenuCard(
-                      title: 'Muat Naik Jadual',
-                      subtitle: 'Module 4',
-                      icon: Icons.upload_file_rounded,
-                      color: const Color(0xFF7C4DFF),
-                      onTap: () => _showPlaceholder(context, 4),
-                    ),
-
                     // ═══ MODULE 6: BOOK REPLACEMENT ROOM (ACTIVE) ═══
                     _MenuCard(
                       title: 'Tempah Bilik',
