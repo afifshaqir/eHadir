@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../models/attendance_record.dart';
 import '../../models/discipline_report_model.dart';
@@ -386,9 +387,9 @@ class _KetuaProgramReport extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 16),
-        _SectionTitle('Pecahan Laporan Disiplin'),
+        _SectionTitle('Laporan Disiplin'),
         const SizedBox(height: 8),
-        _DisciplineDonutCard(reports: reports),
+        _DisciplineBreakdownSection(reports: reports),
         const SizedBox(height: 16),
         _SectionTitle('Pelajar Berisiko (< 80%)'),
         const SizedBox(height: 8),
@@ -525,9 +526,9 @@ class _KetuaJabatanReport extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 16),
-        _SectionTitle('Pecahan Laporan Disiplin'),
+        _SectionTitle('Laporan Disiplin'),
         const SizedBox(height: 8),
-        _DisciplineDonutCard(reports: reports),
+        _DisciplineBreakdownSection(reports: reports),
       ],
     );
   }
@@ -1205,6 +1206,669 @@ class _DisciplineDonutCard extends StatelessWidget {
                     color: const Color(0xFFC62828),
                     label: 'Serius',
                     count: serius),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// KP / KJ section combining the severity donut + filter chips + a
+/// scrollable list of the actual discipline reports. Tapping a donut wedge
+/// or a chip filters the list. Same widget for both roles.
+class _DisciplineBreakdownSection extends StatefulWidget {
+  final List<DisciplineReportModel> reports;
+  const _DisciplineBreakdownSection({required this.reports});
+
+  @override
+  State<_DisciplineBreakdownSection> createState() =>
+      _DisciplineBreakdownSectionState();
+}
+
+class _DisciplineBreakdownSectionState
+    extends State<_DisciplineBreakdownSection> {
+  SeverityLevel? _filter;
+  bool _expanded = true;
+
+  static const _maxCollapsed = 3;
+
+  Color _colorFor(SeverityLevel s) {
+    switch (s) {
+      case SeverityLevel.ringan:
+        return const Color(0xFF2E7D32);
+      case SeverityLevel.sederhana:
+        return const Color(0xFFF57F17);
+      case SeverityLevel.serius:
+        return const Color(0xFFC62828);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reports = widget.reports;
+    if (reports.isEmpty) {
+      return _InfoCard(
+        color: EHadirTheme.approved,
+        icon: Icons.check_circle_rounded,
+        text: 'Tiada laporan disiplin direkodkan.',
+      );
+    }
+
+    final ringan = reports
+        .where((r) => r.severityLevel == SeverityLevel.ringan)
+        .length;
+    final sederhana = reports
+        .where((r) => r.severityLevel == SeverityLevel.sederhana)
+        .length;
+    final serius = reports
+        .where((r) => r.severityLevel == SeverityLevel.serius)
+        .length;
+
+    final filtered = _filter == null
+        ? reports
+        : reports.where((r) => r.severityLevel == _filter).toList();
+    final visible = _expanded || filtered.length <= _maxCollapsed
+        ? filtered
+        : filtered.take(_maxCollapsed).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: EHadirTheme.card,
+        borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+        border: Border.all(color: EHadirTheme.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ─── Donut + legend ───────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 130,
+                  height: 130,
+                  child: _TappableDonut(
+                    ringan: ringan,
+                    sederhana: sederhana,
+                    serius: serius,
+                    total: reports.length,
+                    selected: _filter,
+                    onTap: (s) => setState(() {
+                      _filter = (_filter == s) ? null : s;
+                      _expanded = true;
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _LegendChip(
+                        color: _colorFor(SeverityLevel.ringan),
+                        label: 'Ringan',
+                        count: ringan,
+                        selected: _filter == SeverityLevel.ringan,
+                        onTap: () => setState(() {
+                          _filter = _filter == SeverityLevel.ringan
+                              ? null
+                              : SeverityLevel.ringan;
+                          _expanded = true;
+                        }),
+                      ),
+                      const SizedBox(height: 6),
+                      _LegendChip(
+                        color: _colorFor(SeverityLevel.sederhana),
+                        label: 'Sederhana',
+                        count: sederhana,
+                        selected: _filter == SeverityLevel.sederhana,
+                        onTap: () => setState(() {
+                          _filter = _filter == SeverityLevel.sederhana
+                              ? null
+                              : SeverityLevel.sederhana;
+                          _expanded = true;
+                        }),
+                      ),
+                      const SizedBox(height: 6),
+                      _LegendChip(
+                        color: _colorFor(SeverityLevel.serius),
+                        label: 'Serius',
+                        count: serius,
+                        selected: _filter == SeverityLevel.serius,
+                        onTap: () => setState(() {
+                          _filter = _filter == SeverityLevel.serius
+                              ? null
+                              : SeverityLevel.serius;
+                          _expanded = true;
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: EHadirTheme.divider),
+
+          // ─── Filter status row ────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
+            child: Row(
+              children: [
+                Icon(
+                  _filter == null
+                      ? Icons.list_alt_rounded
+                      : Icons.filter_alt_rounded,
+                  size: 14,
+                  color: _filter == null
+                      ? EHadirTheme.textSecondary
+                      : _colorFor(_filter!),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _filter == null
+                        ? 'Semua laporan (${filtered.length})'
+                        : 'Ditapis: ${_filter!.label} (${filtered.length})',
+                    style: TextStyle(
+                      color: _filter == null
+                          ? EHadirTheme.textSecondary
+                          : _colorFor(_filter!),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (_filter != null)
+                  GestureDetector(
+                    onTap: () => setState(() => _filter = null),
+                    child: const Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Icon(Icons.close_rounded,
+                          size: 16, color: EHadirTheme.textSecondary),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // ─── Reports list ─────────────────────────────────
+          if (filtered.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
+              child: Text(
+                'Tiada laporan ${_filter!.label.toLowerCase()}.',
+                style: const TextStyle(
+                    color: EHadirTheme.textSecondary, fontSize: 12),
+              ),
+            )
+          else
+            for (int i = 0; i < visible.length; i++) ...[
+              _ReportRow(report: visible[i], color: _colorFor(visible[i].severityLevel)),
+              if (i < visible.length - 1)
+                const Divider(height: 1, color: EHadirTheme.divider),
+            ],
+
+          // ─── Show more / less ─────────────────────────────
+          if (filtered.length > _maxCollapsed)
+            InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: const BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: EHadirTheme.divider),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _expanded
+                          ? 'Tunjuk kurang'
+                          : 'Lihat semua (${filtered.length})',
+                      style: const TextStyle(
+                          color: EHadirTheme.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      _expanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: EHadirTheme.primary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TappableDonut extends StatelessWidget {
+  final int ringan;
+  final int sederhana;
+  final int serius;
+  final int total;
+  final SeverityLevel? selected;
+  final ValueChanged<SeverityLevel> onTap;
+  const _TappableDonut({
+    required this.ringan,
+    required this.sederhana,
+    required this.serius,
+    required this.total,
+    required this.selected,
+    required this.onTap,
+  });
+
+  PieChartSectionData _section({
+    required SeverityLevel level,
+    required int count,
+    required Color color,
+  }) {
+    final isSel = selected == level;
+    return PieChartSectionData(
+      value: count.toDouble(),
+      color: isSel ? color : color.withValues(alpha: selected == null ? 1.0 : 0.35),
+      title: '$count',
+      titleStyle: const TextStyle(
+          color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+      radius: isSel ? 44 : 38,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = <PieChartSectionData>[
+      if (ringan > 0)
+        _section(
+            level: SeverityLevel.ringan,
+            count: ringan,
+            color: const Color(0xFF2E7D32)),
+      if (sederhana > 0)
+        _section(
+            level: SeverityLevel.sederhana,
+            count: sederhana,
+            color: const Color(0xFFF57F17)),
+      if (serius > 0)
+        _section(
+            level: SeverityLevel.serius,
+            count: serius,
+            color: const Color(0xFFC62828)),
+    ];
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        PieChart(
+          PieChartData(
+            sections: sections,
+            centerSpaceRadius: 32,
+            sectionsSpace: 2,
+            startDegreeOffset: -90,
+            pieTouchData: PieTouchData(
+              touchCallback: (event, response) {
+                if (!event.isInterestedForInteractions) return;
+                final idx = response?.touchedSection?.touchedSectionIndex;
+                if (idx == null || idx < 0) return;
+                // Map visible index back to severity level (sections are
+                // added in order ringan → sederhana → serius, skipping zeros).
+                final order = [
+                  if (ringan > 0) SeverityLevel.ringan,
+                  if (sederhana > 0) SeverityLevel.sederhana,
+                  if (serius > 0) SeverityLevel.serius,
+                ];
+                if (idx < order.length) onTap(order[idx]);
+              },
+            ),
+          ),
+        ),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$total',
+                style: const TextStyle(
+                    color: EHadirTheme.textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800)),
+            const Text('jumlah',
+                style: TextStyle(
+                    color: EHadirTheme.textSecondary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _LegendChip extends StatelessWidget {
+  final Color color;
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+  const _LegendChip({
+    required this.color,
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
+          border: Border.all(
+            color: selected
+                ? color.withValues(alpha: 0.6)
+                : EHadirTheme.divider,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(
+                      color: selected ? color : EHadirTheme.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+            ),
+            Text('$count',
+                style: TextStyle(
+                    color: selected ? color : EHadirTheme.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportRow extends StatelessWidget {
+  final DisciplineReportModel report;
+  final Color color;
+  const _ReportRow({required this.report, required this.color});
+
+  void _showDetail(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _ReportDetailSheet(report: report, color: color),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _showDetail(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 4,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(report.studentName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: EHadirTheme.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                      Text(
+                        DateFormat('dd MMM').format(report.reportedAt),
+                        style: const TextStyle(
+                            color: EHadirTheme.textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(report.issueDescription,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: EHadirTheme.textSecondary,
+                          fontSize: 12,
+                          height: 1.3)),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border:
+                              Border.all(color: color.withValues(alpha: 0.4)),
+                        ),
+                        child: Text(report.severityLevel.label,
+                            style: TextStyle(
+                                color: color,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text('oleh ${report.reportedByName}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: EHadirTheme.textSecondary,
+                                fontSize: 11,
+                                fontStyle: FontStyle.italic)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportDetailSheet extends StatelessWidget {
+  final DisciplineReportModel report;
+  final Color color;
+  const _ReportDetailSheet({required this.report, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: EHadirTheme.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(report.studentName,
+                      style: const TextStyle(
+                          color: EHadirTheme.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800)),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: color.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(report.severityLevel.label,
+                      style: TextStyle(
+                          color: color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'ID Pelajar: ${report.studentId}',
+              style: const TextStyle(
+                  color: EHadirTheme.textSecondary, fontSize: 12),
+            ),
+            const SizedBox(height: 18),
+            const Text('Keterangan',
+                style: TextStyle(
+                    color: EHadirTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8)),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: EHadirTheme.surfaceLight,
+                borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
+              ),
+              child: Text(report.issueDescription,
+                  style: const TextStyle(
+                      color: EHadirTheme.textPrimary,
+                      fontSize: 13,
+                      height: 1.45)),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _MetaTile(
+                    icon: Icons.calendar_today_rounded,
+                    label: 'Tarikh',
+                    value: DateFormat('dd MMM yyyy, HH:mm')
+                        .format(report.reportedAt),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _MetaTile(
+                    icon: Icons.person_rounded,
+                    label: 'Dilapor Oleh',
+                    value: report.reportedByName,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _MetaTile(
+              icon: Icons.school_rounded,
+              label: 'Program',
+              value: report.program,
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _MetaTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: EHadirTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: EHadirTheme.textSecondary, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        color: EHadirTheme.textSecondary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6)),
+                const SizedBox(height: 1),
+                Text(value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: EHadirTheme.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700)),
               ],
             ),
           ),
