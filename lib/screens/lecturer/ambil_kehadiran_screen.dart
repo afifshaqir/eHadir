@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/attendance_record.dart';
 import '../../models/lecturer_assignment.dart';
 import '../../models/student_model.dart';
+import '../../services/absenteeism_warning_service.dart';
 import '../../services/attendance_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/curriculum_service.dart';
@@ -213,6 +214,17 @@ class _AmbilKehadiranScreenState extends ConsumerState<AmbilKehadiranScreen> {
                           studentId: s.id,
                           weekIndex: w,
                           status: st,
+                        );
+                        // Module 3 — fire absenteeism warnings after the
+                        // grid has the latest cell. Build the updated
+                        // matrix locally so we don't race the stream.
+                        final warner = ref.read(
+                            absenteeismWarningServiceProvider);
+                        warner.check(
+                          attendance: current.withCell(s.id, w, st),
+                          studentNames: {
+                            for (final stu in students) stu.id: stu.name,
+                          },
                         );
                       },
                     ),

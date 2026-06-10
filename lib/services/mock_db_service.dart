@@ -361,6 +361,13 @@ class MockDatabaseService extends ChangeNotifier {
   //  NOTIFICATIONS
   // ═══════════════════════════════════════════════════════════
 
+  /// Append a notification to the in-memory feed (used by the absenteeism
+  /// warning engine and other in-app triggers).
+  void addNotification(AppNotification notification) {
+    notifications.add(notification);
+    notifyListeners();
+  }
+
   List<AppNotification> getNotificationsForUser(String userId) {
     return notifications.where((n) => n.recipientId == userId).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));

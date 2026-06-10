@@ -135,22 +135,36 @@ class PensyarahDashboardScreen extends ConsumerWidget {
                       },
                     ),
 
-                    // ── Module 2: Lapor Disiplin (Placeholder) ──
+                    // ═══ MODULE 2: LAPOR DISIPLIN (ACTIVE) ═══
                     _MenuCard(
                       title: 'Lapor Disiplin',
                       subtitle: 'Module 2',
                       icon: Icons.gavel_rounded,
                       color: EHadirTheme.rejected,
-                      onTap: () => _showPlaceholder(context, 2),
+                      isHighlighted: true,
+                      onTap: () {
+                        final shell =
+                            context.findAncestorStateOfType<AppShellState>();
+                        if (shell != null) {
+                          shell.navigateToLaporan(subTab: 1);
+                        }
+                      },
                     ),
 
-                    // ── Module 3: Pengurusan Pelajar (Placeholder) ──
+                    // ═══ MODULE 3: REPORTING MODULE (ACTIVE) ═══
                     _MenuCard(
-                      title: 'Pengurusan Pelajar',
+                      title: 'Statistik Kehadiran',
                       subtitle: 'Module 3',
-                      icon: Icons.people_alt_rounded,
+                      icon: Icons.insights_rounded,
                       color: EHadirTheme.pending,
-                      onTap: () => _showPlaceholder(context, 3),
+                      isHighlighted: true,
+                      onTap: () {
+                        final shell =
+                            context.findAncestorStateOfType<AppShellState>();
+                        if (shell != null) {
+                          shell.navigateToLaporan(subTab: 0);
+                        }
+                      },
                     ),
 
                     // ═══ MODULE 6: BOOK REPLACEMENT ROOM (ACTIVE) ═══
@@ -176,19 +190,6 @@ class PensyarahDashboardScreen extends ConsumerWidget {
     );
   }
 
-  void _showPlaceholder(BuildContext context, int moduleNumber) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Module $moduleNumber is pending implementation by teammate.',
-          style: const TextStyle(color: Colors.white),
-        ),
-        backgroundColor: EHadirTheme.pending,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
 }
 
 class _MenuCard extends StatelessWidget {

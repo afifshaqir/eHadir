@@ -12,9 +12,9 @@ import 'dashboard/pensyarah_dashboard_screen.dart';
 
 // Import modules
 import 'lecturer/ambil_kehadiran_screen.dart';
-import 'lecturer/lapor_disiplin_screen.dart';
 import 'lecturer/weekly_timetable_screen.dart';
 import 'profile/profile_screen.dart';
+import 'reporting/laporan_hub_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   final AppUser currentUser;
@@ -27,6 +27,7 @@ class AppShell extends ConsumerStatefulWidget {
 class AppShellState extends ConsumerState<AppShell> {
   int _currentIndex = 0;
   String? _attendanceSlotId;
+  int _laporanTab = 0;
 
   void navigateToTab(int index) {
     if (index >= 0 && index < _buildScreens().length) {
@@ -38,6 +39,14 @@ class AppShellState extends ConsumerState<AppShell> {
     setState(() {
       _attendanceSlotId = slotId;
       _currentIndex = 2;
+    });
+  }
+
+  /// Jump to the Laporan tab on a specific sub-tab (0 = Statistik, 1 = Lapor).
+  void navigateToLaporan({int subTab = 0}) {
+    setState(() {
+      _laporanTab = subTab.clamp(0, 1);
+      _currentIndex = 3;
     });
   }
 
@@ -69,7 +78,10 @@ class AppShellState extends ConsumerState<AppShell> {
         key: ValueKey(_attendanceSlotId ?? 'attendance-tab'),
         initialSlotId: _attendanceSlotId,
       ), // Kehadiran
-      const LaporDisiplinScreen(), // Laporan
+      LaporanHubScreen(
+        key: ValueKey('laporan-$_laporanTab'),
+        initialTab: _laporanTab,
+      ), // Module 3 (Statistik) + Module 2 (Lapor Disiplin)
       const ProfileScreen(), // Profil
     ];
   }
